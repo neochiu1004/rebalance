@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="再平衡">
+    <link class="apple-touch-icon" rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23F97316'><circle cx='50' cy='50' r='45'/><text x='50' y='60' font-size='35' text-anchor='middle' fill='white' font-weight='bold'>平</text></svg>">
+    
+    <title>資產再平衡系統 v14.5 (Modular)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        body { -ms-overflow-style: none; scrollbar-width: none; background-color: #F8FAFC; user-select: none; -webkit-user-select: none; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .tab-active { color: #0F172A; font-weight: 700; }
+        .tab-inactive { color: #94A3B8; font-weight: 500; }
+        input[type=range] { accent-color: #0F172A; }
+        .glass-card {
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(241, 245, 249, 1);
+        }
+        .price-badge-gray { background-color: #F8FAFC; border: 1px solid #F1F5F9; }
+        .price-badge-blue { background-color: #F0F9FF; border: 1px solid #E0F2FE; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); padding-bottom: max(env(safe-area-inset-bottom), 0.5rem); }
+        .toggle-checkbox:checked { right: 0; border-color: #68D391; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
+        .toggle-checkbox:checked + .toggle-label:before { transform: translateX(100%); }
+    </style>
+</head>
+<body class="text-slate-900 antialiased pb-20">
+
+    <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-[120] flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        <span id="toast-msg"></span>
+    </div>
+
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[110] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="confirm-modal-content">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="p-2 bg-amber-100 text-amber-600 rounded-full shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900">確認操作</h3>
+                    <p id="confirm-msg" class="text-slate-500 text-sm mt-1"></p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeConfirm()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-sm transition-colors">取消</button>
+                <button id="confirm-yes" class="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold text-sm transition-colors shadow-md">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="cash-edit-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="cash-edit-modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-xl text-slate-800">變更交割帳戶現金</h2>
+                <button onclick="closeCashEditModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <form id="cash-edit-form" onsubmit="saveEditCash(event)" class="space-y-4">
+                <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs font-semibold text-slate-500 shadow-inner">
+                    <span>當前現有餘額:</span>
+                    <span class="text-slate-900 font-black text-sm">NT$ <span id="modal-original-cash">0</span></span>
+                </div>
+                <div class="flex items-center justify-between bg-slate-100/60 p-2 rounded-xl border border-slate-200/50">
+                    <span id="modal-cash-mode-text" class="text-xs font-bold text-slate-700 transition-colors">模式：直接覆蓋</span>
+                    <label class="flex items-center cursor-pointer relative">
+                        <input type="checkbox" id="modal-cash-mode-toggle" onchange="toggleCashMode('modal')" class="sr-only toggle-checkbox">
+                        <div class="w-10 h-5 bg-slate-300 rounded-full transition-colors toggle-label before:content-[''] before:absolute before:w-5 before:h-5 before:bg-white before:rounded-full before:border before:border-slate-300 before:transition-transform"></div>
+                    </label>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase tracking-wider">輸入數值或計算式</label>
+                    <div class="flex gap-1.5">
+                        <input type="text" id="edit-cash-val" placeholder="0" required class="w-full border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-lg">
+                        <button type="button" onclick="calculatePreview('modal')" class="bg-slate-100 hover:bg-slate-200 border border-slate-300/80 text-slate-700 font-bold px-3 rounded-xl transition-all active:scale-95 text-xs shadow-sm">求值</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 pt-1">
+                    <button type="button" onclick="appendCashInput('+')" class="bg-slate-50 hover:bg-slate-100 border p-2 rounded-xl font-bold text-sm text-slate-700 active:scale-95 transition-all shadow-sm">+</button>
+                    <button type="button" onclick="appendCashInput('-')" class="bg-slate-50 hover:bg-slate-100 border p-2 rounded-xl font-bold text-sm text-slate-700 active:scale-95 transition-all shadow-sm">-</button>
+                    <button type="button" onclick="appendCashInput('*')" class="bg-slate-50 hover:bg-slate-100 border p-2 rounded-xl font-bold text-sm text-slate-700 active:scale-95 transition-all shadow-sm">×</button>
+                    <button type="button" onclick="appendCashInput('/')" class="bg-slate-50 hover:bg-slate-100 border p-2 rounded-xl font-bold text-sm text-slate-700 active:scale-95 transition-all shadow-sm">÷</button>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-100">
+                    <button type="submit" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-base transition-colors shadow-md">儲存現金變更</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="highpoint-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="highpoint-modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="font-bold text-xl text-slate-800">設定高低點區間</h2>
+                <button onclick="closeHighPointModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="mb-4">
+                <button type="button" id="auto-fetch-hp-btn" onclick="autoFetchHighLow()" class="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 active:scale-95 shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    ⚡ 一鍵透過 FinMind 自動抓取近 1 年高低點
+                </button>
+            </div>
+            <form id="highpoint-form" onsubmit="saveHighPoint(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-red-500 mb-1 uppercase">自訂高點</label>
+                        <input type="number" id="hp-price" step="any" required class="w-full bg-red-50/30 border border-red-200 rounded-xl py-2 px-3 font-bold text-slate-800 focus:outline-none focus:border-red-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-red-500 mb-1 uppercase">高點日期</label>
+                        <input type="date" id="hp-date" class="w-full bg-red-50/30 border border-red-200 rounded-xl py-2 px-3 font-bold text-slate-800 focus:outline-none focus:border-red-500 text-xs">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-green-600 mb-1 uppercase">自訂低點</label>
+                        <input type="number" id="hp-low-price" step="any" class="w-full bg-green-50/30 border border-green-200 rounded-xl py-2 px-3 font-bold text-slate-800 focus:outline-none focus:border-green-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-green-600 mb-1 uppercase">低點日期</label>
+                        <input type="date" id="hp-low-date" class="w-full bg-green-50/30 border border-green-200 rounded-xl py-2 px-3 font-bold text-slate-800 focus:outline-none focus:border-green-500 text-xs">
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100">
+                    <button type="submit" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-sm transition-colors shadow-md">儲存高低點區間</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="edit-modal-content">
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="font-bold text-xl text-slate-800">編輯持股參數</h2>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <form id="edit-stock-form" onsubmit="saveEditStock(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase">代號</label>
+                        <input type="text" id="edit-symbol" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-slate-500 cursor-not-allowed">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase">名稱</label>
+                        <input type="text" id="edit-name" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-slate-500 cursor-not-allowed">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase">持有股數</label>
+                    <input type="number" id="edit-shares" min="0" step="1" required class="w-full border border-slate-200 rounded-xl py-2 px-3 font-bold text-slate-800">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-blue-600 mb-1.5 uppercase">成交均價</label>
+                        <input type="number" id="edit-cost-price" step="any" required class="w-full border border-blue-200 bg-blue-50/30 rounded-xl py-2 px-3 font-bold text-slate-800">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-purple-600 mb-1.5 uppercase">付出總成本</label>
+                        <input type="number" id="edit-paid-cost" step="any" required class="w-full border border-purple-200 bg-purple-50/30 rounded-xl py-2 px-3 font-bold text-slate-800">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1.5 uppercase">Beta (β) 係數</label>
+                    <input type="number" id="edit-beta" min="0" step="0.1" required class="w-full border border-slate-200 rounded-xl py-2 px-3 font-bold text-slate-800">
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-100">
+                    <button type="submit" class="w-full py-3 bg-slate-900 text-white rounded-xl font-bold shadow-md">儲存修改設定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="transaction-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-md flex items-end sm:items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-50 w-full sm:max-w-lg sm:rounded-3xl shadow-2xl flex flex-col h-[90vh] sm:h-[85vh] transform scale-95 transition-transform duration-200 overflow-hidden" id="transaction-modal-content">
+            
+            <div class="bg-white px-6 py-4 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <div>
+                    <h2 class="font-black text-xl text-slate-900 tracking-tight" id="trans-stock-name">載入中...</h2>
+                    <span id="trans-stock-symbol" class="text-xs font-bold text-slate-400">--</span>
+                </div>
+                <button onclick="closeTransactionModal()" class="p-2 bg-slate-100 text-slate-500 hover:text-slate-800 rounded-full transition-colors active:scale-95">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="bg-white px-6 pt-2 pb-5 border-b border-slate-100 shrink-0">
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">個股總市值 (TWD)</div>
+                <div class="text-3xl font-black text-slate-900 tracking-tight mb-3" id="detail-market-val">NT$ 0</div>
+                
+                <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400">目前總報酬</div>
+                        <div class="text-sm font-black text-[#22C55E]" id="detail-pnl">NT$ 0 (0%)</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400">持有股數</div>
+                        <div class="text-sm font-black text-slate-800" id="detail-shares">0 股</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-400">成交均價</div>
+                        <div class="text-sm font-black text-blue-600" id="detail-cost-price">@0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white px-6 flex border-b border-slate-200 shrink-0">
+                <button id="tab-btn-overview" onclick="switchStockTab('overview')" class="flex-1 py-2 text-xs font-bold text-slate-900 border-b-2 border-slate-900 transition-all">總覽</button>
+                <button id="tab-btn-history" onclick="switchStockTab('history')" class="flex-1 py-2 text-xs font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition-all">交易紀錄</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div id="stock-detail-overview-view" class="space-y-4">
+                    <div class="glass-card p-5">
+                        <h3 class="font-bold text-sm text-slate-800 mb-3">操作快捷方式</h3>
+                        <button onclick="openAddTransactionForm()" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-sm shadow-md flex justify-center items-center gap-2 active:scale-[0.98] transition-all">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                            新增買入 / 賣出交易紀錄
+                        </button>
+                    </div>
+                </div>
+
+                <div id="stock-detail-history-view" class="hidden space-y-3">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">歷史流水帳明細</span>
+                        <button onclick="openAddTransactionForm()" class="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">＋ 新增交易</button>
+                    </div>
+                    <div id="transaction-list-container" class="space-y-2.5">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="add-transaction-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[110] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-black text-lg text-slate-900">新增買賣交易紀錄</h3>
+                <button onclick="closeAddTransactionForm()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <form onsubmit="submitTransaction(event)" class="space-y-4">
+                <div class="flex bg-slate-100 p-1 rounded-2xl">
+                    <button type="button" id="btn-type-buy" onclick="setTransType('buy')" class="flex-1 py-2 text-xs font-black rounded-xl bg-white text-emerald-600 shadow-sm transition-all">買入 (Buy)</button>
+                    <button type="button" id="btn-type-sell" onclick="setTransType('sell')" class="flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all">賣出 (Sell)</button>
+                </div>
+                <input type="hidden" id="trans-type" value="buy">
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交日期</label>
+                        <input type="date" id="trans-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-xs text-slate-800 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交單價</label>
+                        <input type="number" id="trans-price" step="any" min="0" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-bold text-sm text-slate-800 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交股數 <span class="text-slate-400 font-normal">(自動計算28折手續費)</span></label>
+                    <input type="number" id="trans-shares" step="1" min="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-sm text-slate-800 focus:outline-none focus:border-blue-500">
+                </div>
+                
+                <button type="submit" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-sm shadow-md transition-all active:scale-[0.98]">確認寫入帳本</button>
+            </form>
+        </div>
+    </div>
+
+    <main id="app-content" class="w-full max-w-md mx-auto p-4 sm:p-6 pb-24">
+        
+        <section id="view-assets" class="view-section transition-opacity duration-300">
+            <div class="flex justify-between items-start mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
+                <div>
+                    <h1 class="text-lg font-bold text-slate-800 mb-1">總資產價值 (TWD)</h1>
+                    <div class="flex items-center gap-2 text-slate-500">
+                        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <span class="text-xs font-medium" id="last-update">自動更新中</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <div class="text-5xl font-black text-slate-900 tracking-tight" id="total-asset-value">0</div>
+                <div id="total-pnl-summary" class="hidden glass-card mt-4 p-4 flex flex-col gap-1">
+                    <div class="text-xs font-bold text-slate-500">目前總盈虧</div>
+                    <div class="text-3xl font-black text-green-500 tracking-tight" id="total-pnl-amount">NT$ 0</div>
+                    <div class="text-sm font-bold text-green-500" id="total-pnl-percent">0.00%</div>
+                </div>
+            </div>
+            
+            <div class="relative w-56 h-56 mx-auto mb-6 transition-transform hover:scale-105 active:scale-95 cursor-pointer z-10" onclick="manualRefreshFromChart()" title="點擊更新報價">
+                <canvas id="assetChart"></canvas>
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
+                    <span class="text-sm font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg shadow-sm tracking-wide transition-colors" id="chart-center-text">現金 0%</span>
+                </div>
+            </div>
+
+            <div class="mb-10">
+                <div class="flex justify-between items-end mb-3 px-1">
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-xl font-black text-slate-900">交割戶現金</h2>
+                        <button onclick="openCashEditModal()" class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-full transition-colors" title="快速編輯現金">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                    </div>
+                    <span class="text-xl font-black text-slate-900" id="cash-value-display">0</span>
+                </div>
+                <div class="glass-card p-4 flex justify-between items-center transition-all hover:border-slate-300 cursor-pointer" onclick="openCashEditModal()">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <div class="font-bold text-slate-900">活期存款與可用餘額</div>
+                            <div class="text-xs font-semibold text-slate-500 mt-0.5">點擊修改餘額</div>
+                        </div>
+                    </div>
+                    <span class="bg-slate-800 text-white px-2.5 py-1 rounded-md text-xs font-bold shadow-sm" id="cash-ratio-badge">0%</span>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div>
+                    <div class="flex justify-between items-end mb-3 px-1">
+                        <div class="flex items-center gap-3">
+                            <h2 class="text-xl font-black text-slate-900">股票配置明細</h2>
+                            <span class="text-[11px] font-semibold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-md border border-slate-200/50">
+                                組合 Beta: <span id="portfolio-beta" class="font-bold text-slate-700">1.00</span> <span class="text-slate-400 mx-0.5">→</span> <span id="target-portfolio-beta" class="font-bold text-slate-700">1.00</span>
+                            </span>
+                        </div>
+                        <span class="text-xl font-black text-slate-900" id="total-stock-value">0</span>
+                    </div>
+                    <div id="stock-cards-container" class="space-y-4"></div>
+                    <div id="stock-list" class="space-y-4 hidden"></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-trade" class="view-section hidden transition-opacity duration-300">
+            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">獨立交易下單</h1>
+            
+            <div id="trade-tab-content" class="space-y-6 mb-8"></div>
+
+            <div class="glass-card p-5 mb-8">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-black text-base text-slate-900">全域交易歷史紀錄</h2>
+                    <span id="global-history-count" class="text-xs font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">0 筆記錄</span>
+                </div>
+                <div id="global-trade-history" class="space-y-3"></div>
+            </div>
+        </section>
+
+        <!-- 重構: 再平衡試算 View (精準對齊極簡 UI 畫面) -->
+        <section id="view-rebalance" class="view-section hidden transition-opacity duration-300">
+            <div class="mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
+                <h1 class="text-2xl font-black text-slate-900 mb-1">再平衡試算</h1>
+                <p class="text-xs text-slate-400 font-semibold tracking-wide">僅計算目標權重變大於 0 的持股，現金視為債券部位</p>
+            </div>
+
+            <!-- 1. 目前股票水位核心看板 -->
+            <div class="glass-card p-6 mb-4 relative overflow-hidden">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <div class="text-xs font-bold text-slate-400 mb-1">目前股票水位</div>
+                        <div class="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight" id="current-stock-waterlevel-text">0.0%</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-black text-slate-800">目標 <span id="target-stock-waterlevel-text">50</span>%</div>
+                        <div class="text-xs font-bold text-slate-400 mt-0.5">容許偏差 ±<span id="deviation-display-text">5</span>%</div>
+                    </div>
+                </div>
+
+                <!-- 水位狀態膠囊徽章 -->
+                <div id="rebalance-status-badge" class="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm text-center transition-all flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
+                    仍在容許區間內，可暫不調整
+                </div>
+
+                <!-- 卡片內部：微調容許偏差滑塊 -->
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500 flex items-center gap-1">
+                        <span>⚙️ 容許偏差調整</span>
+                        <span class="text-slate-700 font-black ml-1">±<span id="deviation-slider-val-text">5</span>%</span>
+                    </span>
+                    <input type="range" id="deviation-slider" min="1" max="20" step="1" value="5" class="w-32 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900">
+                </div>
+            </div>
+
+            <!-- 2. 目標雙欄位卡片 (目標股票市值 / 目標現金部位) -->
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="glass-card p-4 flex flex-col items-center text-center justify-center min-h-[90px]">
+                    <span class="text-xs font-bold text-slate-400 mb-1">目標股票市值</span>
+                    <span class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight" id="target-stock-market-val">0</span>
+                </div>
+                <div class="glass-card p-4 flex flex-col items-center text-center justify-center min-h-[90px]">
+                    <span class="text-xs font-bold text-slate-400 mb-1">目標現金部位</span>
+                    <span class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight" id="target-cash-market-val">0</span>
+                </div>
+            </div>
+
+            <!-- 3. 調整方式膠囊切換組件 -->
+            <div class="glass-card p-4 mb-6">
+                <div class="text-xs font-bold text-slate-400 mb-3">調整方式</div>
+                <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+                    <button type="button" id="btn-mode-global" onclick="setRebalanceMode('global')" class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-black transition-all bg-slate-900 text-white shadow-sm">
+                        整體等比例
+                    </button>
+                    <button type="button" id="btn-mode-individual" onclick="setRebalanceMode('individual')" class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-bold transition-all text-slate-600 hover:text-slate-900">
+                        精準對齊權重
+                    </button>
+                </div>
+            </div>
+
+            <!-- 4. 建議動作區塊 -->
+            <div class="mb-8">
+                <h2 class="text-lg font-black text-slate-900 mb-3 px-1">建議動作</h2>
+                <div id="action-list" class="space-y-4"></div>
+            </div>
+        </section>
+
+        <section id="view-target" class="view-section hidden transition-opacity duration-300">
+            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">目標配置參數</h1>
+            <div class="glass-card p-5 mb-6">
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="font-bold text-slate-700 flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#84CC16]"></span>股票 (操作池總額)</span>
+                        <div class="bg-slate-900 text-white rounded-lg px-3 py-1 font-black text-lg w-16 text-center"><span id="target-stock-text">50</span>%</div>
+                    </div>
+                    <input type="range" id="target-stock-slider" min="0" max="100" value="50" class="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="font-bold text-slate-500 flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-[#0F172A]"></span>現金保留部位</span>
+                        <div class="bg-slate-100 text-slate-600 rounded-lg px-3 py-1 font-black text-lg border w-16 text-center"><span id="target-cash-text">50</span>%</div>
+                    </div>
+                    <input type="range" id="target-cash-slider" min="0" max="100" value="50" class="w-full h-2.5 bg-slate-200 rounded-lg appearance-none opacity-40 pointer-events-none">
+                </div>
+            </div>
+
+            <div class="flex justify-between items-end mb-3 px-1">
+                <span class="text-sm font-black text-slate-800 uppercase">股票內部權重</span>
+                <div class="flex gap-2">
+                    <button onclick="loadCurrentStockRatios()" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">📊 按現有比例</button>
+                    <button onclick="resetAllAutoBalance()" class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100">⚡ 自動均分</button>
+                </div>
+            </div>
+            <div class="glass-card overflow-hidden mb-8" id="target-stock-weights-container"></div>
+        </section>
+
+        <section id="view-waterlevel" class="view-section hidden transition-opacity duration-300">
+            <div class="sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 mb-6 flex justify-between items-center">
+                <h1 class="text-2xl font-black text-slate-900 m-0">市場水位與黃金標尺</h1>
+                <button id="btn-fetch-finmind" onclick="fetchFinmindHighLow()" class="text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    抓取1年高低
+                </button>
+            </div>
+            <div id="waterlevel-list" class="space-y-4"></div>
+        </section>
+
+        <section id="view-settings" class="view-section hidden transition-opacity duration-300">
+            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">資料管理與設定</h1>
+            
+            <div class="glass-card p-5 mb-6 border-l-4 border-l-blue-500">
+                <h2 class="font-bold text-slate-800 mb-2">資料備份與還原 (JSON)</h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="exportBackup()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm">匯出備份</button>
+                    <div class="relative overflow-hidden w-full">
+                        <button class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl text-sm">匯入還原</button>
+                        <input type="file" id="json-upload" accept=".json" onchange="importBackup(event)" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer">
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 mb-6 border-l-4 border-l-[#84CC16]">
+                <div class="flex items-center gap-2 mb-3">
+                    <h2 class="font-bold text-slate-800">批次匯入持股 (CSV)</h2>
+                </div>
+                <p class="text-[11px] font-medium text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg leading-relaxed">
+                    請上傳券商「未實現損益」匯出之 CSV 檔。<br>
+                    <span class="text-amber-600 font-bold">自動疊加機制：</span>若已有相同股票，將自動合併股數並計算加權平均成本。
+                </p>
+                <div class="relative overflow-hidden inline-block w-full">
+                    <button class="w-full bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl inline-flex items-center justify-center gap-2 transition-colors"><span>選擇 CSV 檔案...</span></button>
+                    <input type="file" id="csv-upload" accept=".csv" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer">
+                </div>
+            </div>
+
+            <div class="glass-card p-5 mb-6">
+                <div class="flex items-center gap-2 mb-3"><h2 class="font-bold text-slate-800">手動單筆新增</h2></div>
+                <form id="add-stock-form" onsubmit="addStockSubmit(event)" class="space-y-3">
+                    <select id="quick-select-stock" onchange="quickSelectStock(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-sm text-slate-700 focus:outline-none">
+                        <option value="">-- 自現有持股帶入 --</option>
+                    </select>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">台股代號</label>
+                            <input type="text" id="add-symbol" placeholder="例: 0050" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">持有股數</label>
+                            <input type="number" id="add-shares" placeholder="例: 1000" min="0" step="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">名稱(選填)</label>
+                            <input type="text" id="add-name" placeholder="自動取得" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">成本(選填)</label>
+                            <input type="number" id="add-price" placeholder="市價代入" min="0" step="any" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">Beta(選填)</label>
+                            <input type="number" id="add-beta" placeholder="預設 1" min="0" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                    </div>
+                    <button type="submit" id="add-submit-btn" class="w-full bg-[#84CC16] hover:bg-[#65A30D] text-white rounded-xl py-3 font-bold mt-2 transition-all shadow-md flex justify-center items-center gap-2">新增此持股</button>
+                </form>
+            </div>
+
+            <div class="glass-card p-5 mb-8 border-t-4 border-t-amber-500">
+                <h2 class="font-bold text-slate-800 mb-2">FinMind Token</h2>
+                <div class="flex gap-2">
+                    <input type="password" id="finmind-token-input" placeholder="貼上您的 FinMind Token" class="flex-1 bg-slate-50 border rounded-xl py-2.5 px-3 text-sm">
+                    <button onclick="saveFinmindToken()" class="bg-slate-900 text-white rounded-xl px-5 font-bold">儲存</button>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 mb-8 border-t-4 border-t-purple-500">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2"><h2 class="font-bold text-slate-800">Fugle (富果) API Key</h2></div>
+                </div>
+                <div class="flex gap-2">
+                    <input type="password" id="api-key-input" placeholder="貼上您的 X-API-KEY" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-mono text-sm focus:outline-none">
+                    <button onclick="saveApiKey()" class="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-5 font-bold transition-all shadow-sm active:scale-95">儲存</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <nav class="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200/60 flex justify-around items-center pb-safe pt-1.5 px-2 z-50 shadow-sm">
+        <button onclick="switchTab('assets')" id="tab-assets" class="flex flex-col items-center p-2 pt-1.5 tab-active flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+            <span class="text-[10px]">資產總覽</span>
+        </button>
+        <button onclick="switchTab('trade')" id="tab-trade" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            <span class="text-[10px]">交易</span>
+        </button>
+        <button onclick="switchTab('rebalance')" id="tab-rebalance" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+            <span class="text-[10px]">再平衡</span>
+        </button>
+        <button onclick="switchTab('target')" id="tab-target" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>
+            <span class="text-[10px]">目標配置</span>
+        </button>
+        <button onclick="switchTab('waterlevel')" id="tab-waterlevel" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <span class="text-[10px]">市場水位</span>
+        </button>
+        <button onclick="switchTab('settings')" id="tab-settings" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span class="text-[10px]">設定</span>
+        </button>
+    </nav>
+
+    <script src="state.js"></script>
+    <script src="assets.js"></script>
+    <script src="transactions.js"></script>
+    <script src="trade.js"></script>
+    <script src="waterlevel.js"></script>
+    <script src="rebalance.js"></script>
+
+    <script>
+        const formatStockName = (s) => (!s.name || s.name === s.symbol) ? (s.symbol || '') : `${s.symbol || ''} ${s.name}`;
+
+        let confirmCallback = null;
+        function showConfirm(msg, callback) {
+            document.getElementById('confirm-msg').innerHTML = msg.replace(/\n/g, '<br>');
+            const modal = document.getElementById('confirm-modal');
+            const content = document.getElementById('confirm-modal-content');
+            modal.classList.remove('hidden');
+            void modal.offsetWidth; 
+            modal.classList.remove('opacity-0');
+            content.classList.remove('scale-95');
+            content.classList.add('scale-100');
+            
+            const yesBtn = document.getElementById('confirm-yes');
+            const newBtn = yesBtn.cloneNode(true); 
+            yesBtn.parentNode.replaceChild(newBtn, yesBtn);
+            newBtn.addEventListener('click', () => {
+                if (callback) callback();
+                closeConfirm();
+            });
+        }
+        
+        function closeConfirm() {
+            const modal = document.getElementById('confirm-modal');
+            const content = document.getElementById('confirm-modal-content');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('opacity-0');
+            t.style.top = '2rem';
+            setTimeout(() => {
+                t.classList.add('opacity-0');
+                t.style.top = '1rem';
+            }, 2500);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.view-section').forEach(el => {
+                el.classList.add('hidden');
+                el.classList.remove('opacity-100');
+                el.classList.add('opacity-0');
+            });
+            document.querySelectorAll('nav button').forEach(el => {
+                el.classList.remove('tab-active');
+                el.classList.add('tab-inactive');
+            });
+            
+            const targetView = document.getElementById(`view-${tabId}`);
+            if (targetView) {
+                targetView.classList.remove('hidden');
+                setTimeout(() => {
+                    targetView.classList.remove('opacity-0');
+                    targetView.classList.add('opacity-100');
+                }, 10);
+            }
+            
+            const targetBtn = document.getElementById(`tab-${tabId}`);
+            if (targetBtn) {
+                targetBtn.classList.add('tab-active');
+                targetBtn.classList.remove('tab-inactive');
+            }
+
+            if (tabId === 'rebalance' && typeof renderRebalanceResult === 'function') {
+                renderRebalanceResult();
+            } else if (tabId === 'trade') {
+                if (typeof renderTradeTab === 'function') renderTradeTab();
+                if (typeof renderGlobalTradeHistory === 'function') renderGlobalTradeHistory();
+            }
+        }
+
+        function initUI() {
+            const slider = document.getElementById('target-stock-slider');
+            const tokenInput = document.getElementById('finmind-token-input');
+            const devSlider = document.getElementById('deviation-slider');
+            const apiKeyInput = document.getElementById('api-key-input');
+            
+            if (slider) slider.value = state.targetStockRatio;
+            if (tokenInput) tokenInput.value = state.finmindToken || '';
+            if (devSlider) devSlider.value = state.deviation || 5;
+            if (apiKeyInput) apiKeyInput.value = state.apiKey || '';
+            
+            if (typeof updateTargetUI === 'function') updateTargetUI();
+            if (typeof renderTargetStockWeights === 'function') renderTargetStockWeights();
+            if (typeof populateQuickSelect === 'function') populateQuickSelect();
+        }
+
+        function setupEventListeners() {
+            const stockSlider = document.getElementById('target-stock-slider');
+            if (stockSlider) {
+                stockSlider.addEventListener('input', (e) => {
+                    state.targetStockRatio = parseFloat(e.target.value);
+                    saveState();
+                    if (typeof updateTargetUI === 'function') updateTargetUI();
+                    if (typeof updateAllData === 'function') updateAllData();
+                });
+            }
+
+            const devSlider = document.getElementById('deviation-slider');
+            if (devSlider) {
+                devSlider.addEventListener('input', (e) => {
+                    state.deviation = parseFloat(e.target.value);
+                    saveState();
+                    const devTextVal = document.getElementById('deviation-display-text');
+                    const devSliderValText = document.getElementById('deviation-slider-val-text');
+                    if (devTextVal) devTextVal.innerText = state.deviation;
+                    if (devSliderValText) devSliderValText.innerText = state.deviation;
+                    if (typeof renderRebalanceResult === 'function') renderRebalanceResult();
+                });
+            }
+
+            const csvUpload = document.getElementById('csv-upload');
+            if (csvUpload) {
+                csvUpload.addEventListener('change', handleCSVUpload);
+            }
+        }
+
+        function saveFinmindToken() {
+            const el = document.getElementById('finmind-token-input');
+            if (el) {
+                state.finmindToken = el.value.trim();
+                saveState();
+                showToast('FinMind Token 已儲存');
+            }
+        }
+
+        function saveApiKey() {
+            const el = document.getElementById('api-key-input');
+            if (el) {
+                state.apiKey = el.value.trim();
+                saveState();
+                showToast('Fugle API Key 已儲存並套用');
+            }
+        }
+
+        window.onload = () => {
+            if (state && state.stocks) {
+                state.stocks.forEach(s => {
+                    if (s.targetWeight === undefined) {
+                        s.targetWeight = isETFOrLeveraged(s.symbol, s.name) ? 1 : 0;
+                    }
+                    if (s.isLocked === undefined) {
+                        s.isLocked = (s.targetWeight === 0);
+                    }
+                });
+            }
+            if (typeof balanceWeights === 'function') balanceWeights(); 
+            initUI();
+            setupEventListeners();
+            if (typeof bindEditModalEvents === 'function') bindEditModalEvents();
+            if (state.apiKey && state.stocks.length > 0) {
+                fetchLatestPrices().then(() => { if (typeof updateAllData === 'function') updateAllData(); }).catch(() => {});
+            } else {
+                if (typeof updateAllData === 'function') updateAllData();
+            }
+        };
+    </script>
+</body>
+</html>
