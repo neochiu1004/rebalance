@@ -1,6 +1,6 @@
 // ==========================================
 // MCE 模組化 - waterlevel.js (市場水位與斐波那契黃金標尺)
-// 版本: v14.6 (Chart.js Fibonacci & Trend Line Direct Integrated)
+// 版本: v14.7 (Fix Stock Split Filter for Trend Chart & Fibonacci)
 // ==========================================
 
 let editingHpIndex = -1;
@@ -240,7 +240,7 @@ async function fetchFinmindHighLow() {
                 let minPrice = Infinity;
                 let maxDate = '';
                 let minDate = '';
-                const historyData = [];
+                let validStartIndex = 0;
 
                 for (let j = resData.data.length - 1; j >= 0; j--) {
                     const day = resData.data[j];
@@ -251,14 +251,15 @@ async function fetchFinmindHighLow() {
                     if (j > 0) {
                         const prevDay = resData.data[j - 1];
                         const priceDiffRatio = Math.abs(prevDay.close - day.close) / prevDay.close;
-                        if (priceDiffRatio >= 0.5) break;
+                        if (priceDiffRatio >= 0.5) {
+                            validStartIndex = j;
+                            break;
+                        }
                     }
                 }
 
-                // 精簡抽取歷史每日數據 [date, close]
-                resData.data.forEach(day => {
-                    historyData.push({ d: day.date, c: day.close });
-                });
+                // 精簡抽取分割發生後 (validStartIndex 至今) 的歷史每日數據 [date, close]
+                const historyData = resData.data.slice(validStartIndex).map(day => ({ d: day.date, c: day.close }));
 
                 if (maxPrice !== -Infinity && minPrice !== Infinity) {
                     stock.highPrice = maxPrice;
@@ -337,7 +338,7 @@ async function autoFetchHighLow() {
         let minPrice = Infinity;
         let maxDate = '';
         let minDate = '';
-        const historyData = [];
+        let validStartIndex = 0;
 
         for (let j = dataList.length - 1; j >= 0; j--) {
             const day = dataList[j];
@@ -348,13 +349,14 @@ async function autoFetchHighLow() {
             if (j > 0) {
                 const prevDay = dataList[j - 1];
                 const priceDiffRatio = Math.abs(prevDay.close - day.close) / prevDay.close;
-                if (priceDiffRatio >= 0.5) break;
+                if (priceDiffRatio >= 0.5) {
+                    validStartIndex = j;
+                    break;
+                }
             }
         }
 
-        dataList.forEach(day => {
-            historyData.push({ d: day.date, c: day.close });
-        });
+        const historyData = dataList.slice(validStartIndex).map(day => ({ d: day.date, c: day.close }));
 
         if (maxPrice !== -Infinity && minPrice !== Infinity) {
             document.getElementById('hp-price').value = maxPrice;
