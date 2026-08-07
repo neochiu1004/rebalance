@@ -5,6 +5,7 @@
 
 let editingHpIndex = -1;
 let trendChartInstance = null;
+let waterLevelTrendChartInstance = null;
 
 // 開啟設定高低點 Modal
 function openHighPointModal(index) {
@@ -99,10 +100,7 @@ function openTrendModal(index) {
 
     if (!stock.historyData || stock.historyData.length === 0) {
         if (noDataEl) noDataEl.classList.remove('hidden');
-        if (trendChartInstance) {
-            trendChartInstance.destroy();
-            trendChartInstance = null;
-        }
+        destroyTrendCharts();
         return;
     }
 
@@ -125,15 +123,25 @@ function closeTrendModal() {
     }, 200);
 }
 
-function renderTrendChart(stock) {
-    const canvas = document.getElementById('trendChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
+function destroyTrendCharts() {
     if (trendChartInstance) {
         trendChartInstance.destroy();
         trendChartInstance = null;
     }
+    if (waterLevelTrendChartInstance) {
+        waterLevelTrendChartInstance.destroy();
+        waterLevelTrendChartInstance = null;
+    }
+}
+
+function renderTrendChart(stock) {
+    const canvas = document.getElementById('trendChart');
+    const waterCanvas = document.getElementById('waterLevelTrendChart');
+    if (!canvas || !waterCanvas) return;
+    const ctx = canvas.getContext('2d');
+    const waterCtx = waterCanvas.getContext('2d');
+
+    destroyTrendCharts();
 
     const labels = stock.historyData.map(h => h.d);
     const prices = stock.historyData.map(h => h.c);
@@ -142,6 +150,7 @@ function renderTrendChart(stock) {
     const hp = parseFloat(stock.highPrice) || 0;
     const lp = parseFloat(stock.lowPrice) || 0;
     const range = hp - lp;
+    const trend = calculateTrendSignal(stock.historyData);
 
     // 建立平行水平線常數陣列
     const makeDataset = (label, val, color, isDashed = true) => ({
@@ -162,6 +171,9 @@ function renderTrendChart(stock) {
         pointRadius: 0,
         fill: false
     }];
+
+    if (trend.ma20 !== null) datasets.push(makeDataset('20日均線', trend.ma20, '#3B82F6'));
+    if (trend.ma60 !== null) datasets.push(makeDataset('60日均線', trend.ma60, '#8B5CF6'));
 
     if (hp > 0) datasets.push(makeDataset('前高', hp, '#EF4444', false));
     if (lp > 0) datasets.push(makeDataset('前低', lp, '#22C55E', false));
@@ -186,11 +198,98 @@ function renderTrendChart(stock) {
                     position: 'top',
                     labels: { boxWidth: 12, font: { size: 10 } }
                 },
-                tooltip: { mode: 'index', intersect: false }
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: items => items[0] ? items[0].label : ''
+                    }
+                }
             },
             scales: {
-                x: { display: false },
-                y: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 10 } } }
+                x: {
+                    ticks: { maxTicksLimit: 6, font: { size: 9 } },
+                    grid: { display: false }
+                },
+                y: {
+                    grid: { color: '#F1F5F9' },
+                    ticks: { font: { size: 10 }, callback: value => `@${value}` }
+                }
+            }
+        }
+    });
+
+    // 水位以「距期間高點的回檔百分比」表示，和卡片上的 -10% / -20% 定義一致。
+    const drawdowns = prices.map(price => hp > 0 && price > 0 ? ((price / hp) - 1) * 100 : null);
+    const latestDrawdown = drawdowns.filter(value => value !== null).at(-1);
+    const summaryEl = document.getElementById('trend-water-summary');
+    if (summaryEl) {
+        const current = Number.isFinite(latestDrawdown) ? latestDrawdown : 0;
+        const zone = current <= -20 ? '股災區間' : current <= -10 ? '觀察區間' : '正常區間';
+        const color = current <= -20 ? '#E11D48' : current <= -10 ? '#D97706' : '#059669';
+        summaryEl.textContent = `${current >= 0 ? '+' : ''}${current.toFixed(2)}% · ${zone} · ${trend.signal}`;
+        summaryEl.style.color = color;
+    }
+
+    const levelLine = (label, value, color, dashed = true) => ({
+        label,
+        data: Array(len).fill(value),
+        borderColor: color,
+        borderWidth: 1,
+        borderDash: dashed ? [5, 4] : [],
+        pointRadius: 0,
+        fill: false
+    });
+
+    waterLevelTrendChartInstance = new Chart(waterCtx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: '回檔水位',
+                    data: drawdowns,
+                    borderColor: '#F97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: true,
+                    tension: 0.18,
+                    spanGaps: true
+                },
+                levelLine('前高 0%', 0, '#94A3B8', false),
+                levelLine('觀察線 -10%', -10, '#F59E0B'),
+                levelLine('股災線 -20%', -20, '#EF4444')
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { boxWidth: 10, font: { size: 9 }, filter: item => item.datasetIndex === 0 || item.datasetIndex > 1 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: context => `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { maxTicksLimit: 6, font: { size: 9 } },
+                    grid: { display: false }
+                },
+                y: {
+                    suggestedMin: -30,
+                    suggestedMax: 0,
+                    grid: { color: '#F1F5F9' },
+                    ticks: { font: { size: 10 }, callback: value => `${value}%` }
+                }
             }
         }
     });
@@ -236,21 +335,14 @@ async function fetchFinmindHighLow() {
 
             const resData = await response.json();
             if (resData.msg === "success" && resData.data && resData.data.length > 0) {
-                let maxPrice = -Infinity;
-                let minPrice = Infinity;
-                let maxDate = '';
-                let minDate = '';
                 let validStartIndex = 0;
 
                 for (let j = resData.data.length - 1; j >= 0; j--) {
                     const day = resData.data[j];
                     
-                    if (day.max > maxPrice) { maxPrice = day.max; maxDate = day.date; }
-                    if (day.min < minPrice) { minPrice = day.min; minDate = day.date; }
-
                     if (j > 0) {
                         const prevDay = resData.data[j - 1];
-                        const priceDiffRatio = Math.abs(prevDay.close - day.close) / prevDay.close;
+                        const priceDiffRatio = prevDay.close > 0 ? Math.abs(prevDay.close - day.close) / prevDay.close : 0;
                         if (priceDiffRatio >= 0.5) {
                             validStartIndex = j;
                             break;
@@ -258,14 +350,17 @@ async function fetchFinmindHighLow() {
                     }
                 }
 
-                // 精簡抽取分割發生後 (validStartIndex 至今) 的歷史每日數據 [date, close]
-                const historyData = resData.data.slice(validStartIndex).map(day => ({ d: day.date, c: day.close }));
+                // 高低點、趨勢圖與水位都使用同一個有效區間，避免除權息前後資料混在一起。
+                const validData = resData.data.slice(validStartIndex).filter(day => Number(day.close) > 0);
+                const historyData = validData.map(day => ({ d: day.date, c: Number(day.close) }));
+                const highPoint = validData.reduce((best, day) => Number(day.max) > best.price ? { price: Number(day.max), date: day.date } : best, { price: -Infinity, date: '' });
+                const lowPoint = validData.reduce((best, day) => Number(day.min) < best.price ? { price: Number(day.min), date: day.date } : best, { price: Infinity, date: '' });
 
-                if (maxPrice !== -Infinity && minPrice !== Infinity) {
-                    stock.highPrice = maxPrice;
-                    stock.highDate = maxDate;
-                    stock.lowPrice = minPrice;
-                    stock.lowDate = minDate;
+                if (highPoint.price !== -Infinity && lowPoint.price !== Infinity && historyData.length > 0) {
+                    stock.highPrice = highPoint.price;
+                    stock.highDate = highPoint.date;
+                    stock.lowPrice = lowPoint.price;
+                    stock.lowDate = lowPoint.date;
                     stock.historyData = historyData;
                     updatedCount++;
                 }
@@ -393,7 +488,7 @@ function renderWaterLevel() {
     }
 
     container.innerHTML = state.stocks.map((s, idx) => {
-        const nameDisplay = typeof formatStockName === 'function' ? formatStockName(s) : (s.name || s.symbol);
+        const nameDisplay = escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.name || s.symbol));
         const currentPrice = s.price || s.costPrice || 0;
         const costPrice = s.costPrice !== undefined ? s.costPrice : currentPrice;
 
@@ -410,6 +505,7 @@ function renderWaterLevel() {
 
         const hp = parseFloat(s.highPrice);
         const lp = s.lowPrice ? parseFloat(s.lowPrice) : 0;
+        const trend = calculateTrendSignal(s.historyData || []);
         
         let dropPct = hp > 0 ? ((currentPrice - hp) / hp) * 100 : 0;
         let zoneText = '正常區間';
@@ -539,7 +635,7 @@ function renderWaterLevel() {
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 <div class="${zoneBg} p-3 rounded-xl border border-white flex flex-col justify-center items-center text-center shadow-sm">
                     <span class="text-[10px] font-bold text-slate-500 mb-0.5">目前水位狀態</span>
                     <span class="text-sm font-black ${zoneColor}">${zoneText}</span>
@@ -547,6 +643,11 @@ function renderWaterLevel() {
                 <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-col justify-center items-center text-center shadow-inner">
                     <span class="text-[10px] font-bold text-slate-500 mb-0.5">距最高點回檔</span>
                     <span class="text-sm font-black ${zoneColor}">${dropSign}${dropPct.toFixed(2)}%</span>
+                </div>
+                <div class="bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 flex flex-col justify-center items-center text-center shadow-inner col-span-2 sm:col-span-1">
+                    <span class="text-[10px] font-bold text-slate-500 mb-0.5">均線趨勢</span>
+                    <span class="text-sm font-black ${trend.signal === '多頭' ? 'text-emerald-600' : trend.signal === '空頭' ? 'text-rose-600' : 'text-indigo-600'}">${trend.signal}</span>
+                    <span class="text-[9px] text-slate-400 mt-0.5">${trend.ma60 === null ? '需至少 60 日資料' : `MA20 ${fmtPrice(trend.ma20)} · MA60 ${fmtPrice(trend.ma60)}`}</span>
                 </div>
             </div>
 

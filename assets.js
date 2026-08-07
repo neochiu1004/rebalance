@@ -145,8 +145,8 @@ function updateAllData() {
             const currentValue = Math.round(s.shares * currentPrice); 
             const ratio = metrics.displayTotal > 0 ? (currentValue / metrics.displayTotal) * 100 : 0;
             
-            const nameDisplay = typeof formatStockName === 'function' ? formatStockName(s) : (s.name || s.symbol || 'Unknown');
-            const symbolDisplay = s.symbol ? `${s.symbol}.TW` : '';
+            const nameDisplay = escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.name || s.symbol || 'Unknown'));
+            const symbolDisplay = escapeHtml(s.symbol ? `${s.symbol}.TW` : '');
             
             const isExcluded = (parseFloat(s.targetWeight) || 0) <= 0;
             const opacityClass = isExcluded ? 'opacity-40 grayscale pointer-events-none' : '';
@@ -340,10 +340,48 @@ function appendCashInput(char) {
 function calculateExpression(valStr) {
     valStr = valStr.replace(/×/g, '*').replace(/÷/g, '/');
     const sanitized = valStr.replace(/[^0-9+\-*/().]/g, '');
-    let result = 0;
-    if (sanitized) {
-        result = new Function('return ' + sanitized)();
-    }
+    if (!sanitized) return 0;
+    if (sanitized !== valStr.replace(/\s/g, '')) throw new Error("無效算式");
+
+    // 只解析數字與四則運算，避免使用 eval/new Function 執行使用者輸入。
+    const normalizedTokens = sanitized.match(/(?:\d+(?:\.\d*)?|\.\d+)|[+\-*/()]/g);
+    if (!normalizedTokens || normalizedTokens.join('') !== sanitized) throw new Error("無效算式");
+    let position = 0;
+    const parseExpression = () => {
+        let value = parseTerm();
+        while (normalizedTokens[position] === '+' || normalizedTokens[position] === '-') {
+            const operator = normalizedTokens[position++];
+            const rhs = parseTerm();
+            value = operator === '+' ? value + rhs : value - rhs;
+        }
+        return value;
+    };
+    const parseTerm = () => {
+        let value = parseFactor();
+        while (normalizedTokens[position] === '*' || normalizedTokens[position] === '/') {
+            const operator = normalizedTokens[position++];
+            const rhs = parseFactor();
+            if (operator === '/' && rhs === 0) throw new Error("不可除以零");
+            value = operator === '*' ? value * rhs : value / rhs;
+        }
+        return value;
+    };
+    const parseFactor = () => {
+        const token = normalizedTokens[position++];
+        if (token === '+' || token === '-') {
+            const value = parseFactor();
+            return token === '-' ? -value : value;
+        }
+        if (token === '(') {
+            const value = parseExpression();
+            if (normalizedTokens[position++] !== ')') throw new Error("括號不完整");
+            return value;
+        }
+        if (!token || !/^\d+(?:\.\d*)?$|^\.\d+$/.test(token)) throw new Error("無效算式");
+        return Number(token);
+    };
+    const result = parseExpression();
+    if (position !== normalizedTokens.length) throw new Error("無效算式");
     if (isNaN(result) || !isFinite(result)) throw new Error("無效算式");
     return result;
 }
@@ -780,8 +818,12 @@ function handleCSVUpload(e) {
             const beta = name.includes('正2') ? 2 : 1; 
             
             if (name && !isNaN(shares) && !isNaN(costPrice)) {
-                const pureBuyValue = Math.round(shares * costPrice);
-                const calculatedFee = Math.max(1, Math.round(pureBuyValue * 0.001425 * 0.28));
+                const importCost = calculateTradingCost({
+                    type: 'buy',
+                    price: costPrice,
+                    shares,
+                    stock: { symbol, name }
+                });
 
                 const csvTransaction = {
                     id: "csv_" + Date.now().toString() + "_" + i,
@@ -789,8 +831,9 @@ function handleCSVUpload(e) {
                     type: 'buy',
                     price: costPrice,
                     shares: shares,
-                    fee: calculatedFee,
+                    fee: importCost.fee,
                     tax: 0,
+                    netAmount: paidCost,
                     netAmount: paidCost
                 };
 
@@ -813,7 +856,7 @@ function handleCSVUpload(e) {
                     if (!existing.transactions) existing.transactions = [];
                     existing.transactions.push(csvTransaction);
                 } else {
-                    let isEtf = typeof isETFOrLeveraged === 'function' ? isETFOrLeveraged(symbol, name) : false;
+                    let isEtf = isETF(symbol, name);
                     const newStock = { 
                         name, 
                         shares, 
@@ -871,15 +914,7 @@ function processCSVRow(row) {
     const txType = (type === 'buy' || type === '買進') ? 'buy' : 'sell';
     
     // 依據現價與股數精算手續費與稅 (模擬真實交易)
-    const amount = txPrice * txShares;
-    const rawFee = amount * 0.001425 * 0.28;
-    const fee = amount > 0 ? Math.max(1, Math.round(rawFee)) : 0;
-    
-    let tax = 0;
-    if (txType === 'sell') {
-        const isETF = symbol.startsWith('00') || name.includes('ETF') || symbol.endsWith('L') || symbol.endsWith('D');
-        tax = Math.round(amount * (isETF ? 0.001 : 0.003));
-    }
+    const cost = calculateTradingCost({ type: txType, price: txPrice, shares: txShares, stock: { symbol, name } });
 
     // 1. 完整寫入交易紀錄陣列 (支援 trade.js 渲染)
     existing.transactions.push({
@@ -887,8 +922,9 @@ function processCSVRow(row) {
         type: txType,
         price: txPrice,
         shares: txShares,
-        fee: fee,
-        tax: tax,
+        fee: cost.fee,
+        tax: cost.tax,
+        netAmount: cost.netAmount,
         date: date || new Date().toISOString().split('T')[0],
         note: 'CSV 批次匯入',
         isImported: true // 標記為匯入，避免後續重複計費
@@ -896,7 +932,7 @@ function processCSVRow(row) {
 
     // 2. 累加/扣抵實體持股與均價
     if (txType === 'buy') {
-        const totalCost = amount + fee; 
+        const totalCost = cost.netAmount;
         const prevPaidSum = (existing.costPrice || 0) * (existing.shares || 0);
         existing.shares += txShares;
         existing.costPrice = existing.shares > 0 ? (prevPaidSum + totalCost) / existing.shares : 0;
@@ -915,21 +951,8 @@ function calculateEstimatedSellCost(stock, currentPrice) {
   const price = currentPrice || stock.price || stock.costPrice || 0;
   if (shares <= 0 || !price) return { fee: 0, tax: 0, netValue: 0 };
   
-  const amount = shares * price;
-  
-  // 手續費：0.1425% * 2.8折，最低 1 元，單筆四捨五入
-  const rawFee = amount * 0.001425 * 0.28;
-  const fee = Math.max(1, Math.round(rawFee));
-  
-  // 證交稅：ETF 0.1%，一般股票 0.3%
-  const symbol = stock.symbol || '';
-  const name = stock.name || '';
-  const isETF = symbol.startsWith('00') || name.includes('ETF') || symbol.endsWith('L') || symbol.endsWith('D');
-  const taxRate = isETF ? 0.001 : 0.003;
-  const tax = Math.round(amount * taxRate);
-  
-  const netValue = amount - fee - tax;
-  return { fee, tax, netValue };
+  const { fee, tax, netAmount } = calculateTradingCost({ type: 'sell', price, shares, stock });
+  return { fee, tax, netValue: netAmount };
 }
 
 // ==========================================

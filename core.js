@@ -1,0 +1,104 @@
+// ==========================================
+// 共用交易核心：費用、持股、現金與交易紀錄
+// ==========================================
+
+function isETF(symbol = '', name = '') {
+    const normalizedSymbol = String(symbol).toUpperCase();
+    const normalizedName = String(name);
+    return normalizedSymbol.startsWith('00') ||
+        normalizedName.includes('ETF') ||
+        normalizedSymbol.endsWith('L') ||
+        normalizedSymbol.endsWith('D');
+}
+
+function calculateTradingCost({ type, price, shares, stock = {}, feeOverride = null }) {
+    const amount = Number(price) * Number(shares);
+    if (!Number.isFinite(amount) || amount < 0) throw new Error('交易金額無效');
+
+    const automaticFee = amount > 0 ? Math.max(1, Math.round(amount * 0.001425 * 0.28)) : 0;
+    const fee = feeOverride === null || feeOverride === undefined
+        ? automaticFee
+        : Math.max(0, Math.round(Number(feeOverride) || 0));
+    const tax = type === 'sell'
+        ? Math.round(amount * (isETF(stock.symbol, stock.name) ? 0.001 : 0.003))
+        : 0;
+    const netAmount = type === 'buy' ? amount + fee : amount - fee - tax;
+
+    return { amount, fee, tax, netAmount };
+}
+
+function applyTransaction({
+    stock,
+    type,
+    price,
+    shares,
+    feeOverride = null,
+    date,
+    note = '',
+    syncCash = true,
+    isImported = false,
+    id = Date.now().toString()
+}) {
+    if (!stock || !['buy', 'sell'].includes(type)) throw new Error('交易資料無效');
+    if (!Number.isFinite(Number(price)) || Number(price) <= 0 || !Number.isInteger(Number(shares)) || Number(shares) <= 0) {
+        throw new Error('請輸入有效的單價與股數');
+    }
+
+    const quantity = Number(shares);
+    const cost = calculateTradingCost({ type, price, shares: quantity, stock, feeOverride });
+    if (type === 'sell' && quantity > (Number(stock.shares) || 0)) {
+        throw new Error('賣出股數不可大於現有持股');
+    }
+    if (type === 'buy' && syncCash && cost.netAmount > (Number(state.cash) || 0)) {
+        throw new Error('現金不足，無法完成買進');
+    }
+
+    if (type === 'buy') {
+        const previousShares = Number(stock.shares) || 0;
+        const previousCost = (Number(stock.costPrice) || 0) * previousShares;
+        stock.shares = previousShares + quantity;
+        stock.costPrice = (previousCost + cost.netAmount) / stock.shares;
+    } else {
+        stock.shares = (Number(stock.shares) || 0) - quantity;
+    }
+
+    if (syncCash) state.cash = (Number(state.cash) || 0) + (type === 'buy' ? -cost.netAmount : cost.netAmount);
+    if (!stock.transactions) stock.transactions = [];
+    const transaction = {
+        id,
+        type,
+        price: Number(price),
+        shares: quantity,
+        fee: cost.fee,
+        tax: cost.tax,
+        netAmount: cost.netAmount,
+        date: date || new Date().toISOString().split('T')[0],
+        note,
+        isImported
+    };
+    stock.transactions.unshift(transaction);
+    return { ...cost, transaction };
+}
+
+function movingAverage(values, period) {
+    if (!Array.isArray(values) || values.length < period) return null;
+    const window = values.slice(-period).map(Number);
+    if (window.some(value => !Number.isFinite(value))) return null;
+    return window.reduce((sum, value) => sum + value, 0) / period;
+}
+
+function calculateTrendSignal(historyData = []) {
+    const prices = historyData.map(item => Number(item.c)).filter(Number.isFinite);
+    const current = prices.at(-1) || null;
+    const ma20 = movingAverage(prices, 20);
+    const ma60 = movingAverage(prices, 60);
+    let signal = '資料不足';
+    if (current !== null && ma20 !== null && ma60 !== null) {
+        signal = current >= ma20 && ma20 >= ma60
+            ? '多頭'
+            : current < ma20 && ma20 < ma60
+                ? '空頭'
+                : '中性';
+    }
+    return { current, ma20, ma60, signal };
+}

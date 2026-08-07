@@ -19,7 +19,7 @@ function renderTradeTab() {
     if (state && state.stocks) {
         state.stocks.forEach((s, idx) => {
             const name = s.name || s.symbol;
-            stockOptions += `<option value="${idx}">${name} (庫存: ${s.shares || 0})</option>`;
+            stockOptions += `<option value="${idx}">${escapeHtml(name)} (庫存: ${s.shares || 0})</option>`;
         });
     }
 
@@ -166,7 +166,7 @@ function toggleSyncCash() {
     tradeConfig.syncCash = document.getElementById('trade-sync-cash-toggle').checked;
 }
 
-// 動態試算 (複用 transactions.js 的計算邏輯)
+// 動態試算（使用共用交易核心）
 function calcTradePreview(isManualFeeInput = false) {
     if (tradeConfig.stockIndex === -1) return;
     const stock = state.stocks[tradeConfig.stockIndex];
@@ -175,9 +175,9 @@ function calcTradePreview(isManualFeeInput = false) {
     const shares = parseInt(document.getElementById('trade-shares').value) || 0;
     const isBuy = tradeConfig.type === 'buy';
 
-    const { fee: autoFee, tax, amount } = typeof calculateTxFeeAndTax === 'function' 
-        ? calculateTxFeeAndTax(tradeConfig.type, price, shares, stock.symbol, stock.name)
-        : { fee: 0, tax: 0, amount: price * shares };
+    const automaticCost = calculateTradingCost({ type: tradeConfig.type, price, shares, stock });
+    const { tax, amount } = automaticCost;
+    const autoFee = automaticCost.fee;
 
     let currentFee = autoFee;
     const feeInput = document.getElementById('trade-fee');
@@ -211,47 +211,20 @@ function submitTradeForm(e) {
 
     if (price <= 0 || shares <= 0) return;
 
-    if (!isBuy && shares > (stock.shares || 0)) {
-        if(typeof showToast === 'function') showToast('賣出股數不可大於現有持股');
+    try {
+        applyTransaction({
+            stock,
+            type: tradeConfig.type,
+            price,
+            shares,
+            feeOverride: fee,
+            date,
+            note: '交易頁面新增',
+            syncCash: tradeConfig.syncCash
+        });
+    } catch (error) {
+        if(typeof showToast === 'function') showToast(error.message);
         return;
-    }
-
-    // 計算稅金
-    let tax = 0;
-    if (!isBuy) {
-        const isETF = (stock.symbol || '').startsWith('00') || (stock.name || '').includes('ETF') || (stock.symbol || '').endsWith('L') || (stock.symbol || '').endsWith('D');
-        tax = Math.round(price * shares * (isETF ? 0.001 : 0.003));
-    }
-
-    const amount = price * shares;
-    const totalFlow = isBuy ? (amount + fee) : (amount - fee - tax);
-
-    // 更新持股
-    if (isBuy) {
-        const prevPaidSum = (stock.costPrice || 0) * (stock.shares || 0);
-        stock.shares = (stock.shares || 0) + shares;
-        stock.costPrice = (prevPaidSum + totalFlow) / stock.shares;
-    } else {
-        stock.shares -= shares;
-    }
-
-    // 寫入紀錄
-    if (!stock.transactions) stock.transactions = [];
-    stock.transactions.unshift({
-        id: Date.now().toString(),
-        type: tradeConfig.type,
-        price,
-        shares,
-        fee,
-        tax,
-        date,
-        note: '交易頁面新增',
-        isImported: false
-    });
-
-    // 同步現金
-    if (tradeConfig.syncCash) {
-        state.cash = (state.cash || 0) + (isBuy ? -totalFlow : totalFlow);
     }
 
     saveState();
@@ -295,10 +268,10 @@ function renderGlobalTradeHistory() {
                 <div>
                     <div class="flex items-center space-x-2 mb-1">
                         <span class="px-2 py-0.5 rounded text-xs font-bold ${typeColor}">${isBuy ? '買進' : '賣出'}</span>
-                        <span class="text-sm font-bold text-slate-800">${t.stockName}</span>
+                        <span class="text-sm font-bold text-slate-800">${escapeHtml(t.stockName)}</span>
                     </div>
                     <div class="text-xs text-slate-500 space-x-2">
-                        <span>${t.date}</span>
+                        <span>${escapeHtml(t.date)}</span>
                         <span>成交: ${t.price}</span>
                         <span>股數: ${t.shares}</span>
                     </div>

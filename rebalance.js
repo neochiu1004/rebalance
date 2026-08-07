@@ -272,6 +272,9 @@ function renderRebalanceResult(metrics) {
 
     let subItemsHTML = '';
     let totalStockDiff = 0;
+    let totalBuyNeed = 0;
+    let totalSellValue = 0;
+    const minTradeValue = Math.max(0, Number(state.minTradeValue) || 0);
 
     validTargetStocks.forEach((s) => {
         const weight = parseFloat(s.targetWeight) || 0;
@@ -288,20 +291,29 @@ function renderRebalanceResult(metrics) {
             diffStock = individualTargetValue - currentValue;
         }
         
-        totalStockDiff += diffStock;
+        const shouldTrade = Math.abs(diffStock) >= minTradeValue;
+        if (shouldTrade) {
+            totalStockDiff += diffStock;
+            if (diffStock >= 0) totalBuyNeed += diffStock;
+            else totalSellValue += Math.abs(diffStock);
+        }
         const suggestShares = currentPrice > 0 ? Math.abs(diffStock) / currentPrice : 0;
         
         const isBuy = diffStock >= 0;
         const actionType = isBuy ? '買入' : '賣出';
         const actionColorClass = isBuy ? 'text-slate-900 font-black' : 'text-[#EF4444] font-black'; 
-        const nameDisplay = formatStockName(s);
+        const nameDisplay = escapeHtml(formatStockName(s));
+        const actionDetail = shouldTrade
+            ? `<div class="text-sm ${actionColorClass}">${actionType} NT$ ${fmt(Math.abs(diffStock))}</div>
+               <div class="text-[11px] text-slate-400 font-medium">(約 ${fmt(suggestShares)} 股)</div>`
+            : `<div class="text-xs font-bold text-slate-400">暫不交易</div>
+               <div class="text-[10px] text-slate-400">差額低於 NT$${fmt(minTradeValue)}</div>`;
 
         subItemsHTML += `
         <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 px-1">
             <div class="font-bold text-slate-800 text-sm truncate max-w-[55%]">${nameDisplay}</div>
             <div class="text-right shrink-0">
-                <div class="text-sm ${actionColorClass}">${actionType} NT$ ${fmt(Math.abs(diffStock))}</div>
-                <div class="text-[11px] text-slate-400 font-medium">(約 ${fmt(suggestShares)} 股)</div>
+                ${actionDetail}
             </div>
         </div>`;
     });
@@ -310,6 +322,11 @@ function renderRebalanceResult(metrics) {
     const isAggregateBuy = totalStockDiff >= 0;
     const aggregateType = isAggregateBuy ? '組合加碼' : '組合減碼';
     const aggregateColorClass = isAggregateBuy ? 'bg-slate-900 text-white' : 'bg-[#EF4444] text-white';
+
+    const availableForBuys = Math.max(0, Number(state.cash) || 0) + (state.cashFlowFirst ? totalSellValue : 0);
+    const cashWarning = totalBuyNeed > availableForBuys
+        ? `<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">⚠️ 買進需求超過可用現金，建議先完成賣出，或降低股票目標比例。</div>`
+        : `<div class="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">✓ ${state.cashFlowFirst ? '已將預計賣出所得納入買進資金估算。' : '目前以現金餘額估算買進能力。'}</div>`;
 
     actionsHTML += `
     <div class="glass-card p-5 relative overflow-hidden shadow-sm">
@@ -327,6 +344,7 @@ function renderRebalanceResult(metrics) {
             <span class="text-xs font-semibold text-slate-500">目標總額: <span class="text-blue-600 font-black">NT$${fmt(targetStockPoolValue)}</span></span>
         </div>
 
+        ${cashWarning}
         <div class="flex justify-between items-center mb-4 px-1">
             <div class="font-black text-base text-slate-900">總計畫差額</div>
             <div class="${aggregateColorClass} px-3 py-1.5 rounded-xl text-right shrink-0 shadow-sm flex items-center gap-2">
@@ -361,7 +379,7 @@ function renderTargetStockWeights() {
         const html = `
         <div class="flex flex-col p-3 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 ${isExcluded ? 'opacity-50' : ''}">
             <div class="flex justify-between items-center mb-2">
-                <span class="font-bold text-sm truncate pr-3 text-slate-800">${formatStockName ? formatStockName(s) : (s.name || s.symbol)}</span>
+                <span class="font-bold text-sm truncate pr-3 text-slate-800">${escapeHtml(formatStockName ? formatStockName(s) : (s.name || s.symbol))}</span>
                 <button onclick="toggleLock(${idx})" class="text-[10px] font-bold px-2.5 py-1 rounded-md transition-all active:scale-95 border ${s.isLocked ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200'}">
                     ${s.isLocked ? '📌 已指定' : '🔓 自動分配'}
                 </button>

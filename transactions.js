@@ -129,6 +129,8 @@ function renderTransactionList(index) {
         const typeLabel = isBuy ? '買進' : '賣出';
         const sign = isBuy ? '-' : '+';
         const amountColor = isBuy ? 'text-slate-900' : 'text-blue-600';
+        const legacyNetAmount = (Number(t.price) || 0) * (Number(t.shares) || 0) + (isBuy ? (Number(t.fee) || 0) : -(Number(t.fee) || 0) - (Number(t.tax) || 0));
+        const displayAmount = Number.isFinite(Number(t.netAmount)) ? Number(t.netAmount) : legacyNetAmount;
         
         return `
         <div class="p-3.5 bg-white rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
@@ -147,7 +149,7 @@ function renderTransactionList(index) {
                 </div>
             </div>
             <div class="text-right shrink-0">
-                <div class="text-sm font-black ${amountColor}">${sign}NT$${fmt(t.netAmount)}</div>
+                <div class="text-sm font-black ${amountColor}">${sign}NT$${fmt(displayAmount)}</div>
                 <button onclick="deleteTransaction(${index}, '${t.id}')" class="text-[10px] font-bold text-red-400 hover:text-red-600 mt-1 inline-block">刪除</button>
             </div>
         </div>`;
@@ -192,30 +194,7 @@ function closeAddTransactionForm() {
     setTimeout(() => formModal.classList.add('hidden'), 200);
 }
 
-// ==========================================
-// 1. 輔助計費函式：計算交易手續費與證交稅
-// ==========================================
-function calculateTxFeeAndTax(type, price, shares, symbol = '', name = '') {
-  const amount = price * shares;
-  
-  // 手續費：0.1425% * 2.8折，最低 1 元，單筆四捨五入
-  const rawFee = amount * 0.001425 * 0.28;
-  const fee = amount > 0 ? Math.max(1, Math.round(rawFee)) : 0;
-  
-  // 證交稅：僅賣出收取。ETF (以 00 開頭或名稱含 ETF) 0.1%，一般股票 0.3%
-  let tax = 0;
-  if (type === 'sell') {
-    const isETF = (symbol || '').startsWith('00') || (name || '').includes('ETF') || (symbol || '').endsWith('L') || (symbol || '').endsWith('D');
-    const taxRate = isETF ? 0.001 : 0.003;
-    tax = Math.round(amount * taxRate);
-  }
-  
-  return { fee, tax, amount };
-}
-
-// ==========================================
-// 2. submitTransaction 手動新增交易與費用扣除
-// ==========================================
+// 手動新增交易：資料變更統一交給 core.js。
 function submitTransaction(e) {
   e.preventDefault();
   if (currentTransStockIndex === -1) return;
@@ -232,43 +211,12 @@ function submitTransaction(e) {
     return;
   }
 
-  // 精算手續費與證交稅
-  const { fee, tax, amount } = calculateTxFeeAndTax(type, price, shares, stock.symbol, stock.name);
-
-  if (type === 'buy') {
-    const totalCost = amount + fee; // 買進總成本含手續費
-    stock.shares = (stock.shares || 0) + shares;
-    // 更新持股均價（含手續費計入）
-    const prevPaidSum = (stock.costPrice || 0) * ((stock.shares || 0) - shares);
-    stock.costPrice = stock.shares > 0 ? (prevPaidSum + totalCost) / stock.shares : 0;
-    
-    // 扣除現金
-    state.cash = Math.max(0, state.cash - totalCost);
-  } else if (type === 'sell') {
-    if (shares > (stock.shares || 0)) {
-      if (typeof showToast === 'function') showToast('賣出股數不可大於現有持股');
-      return;
-    }
-    const netProceeds = amount - fee - tax; // 賣出實收扣除手續費與證交稅
-    stock.shares -= shares;
-    
-    // 加回現金
-    state.cash += netProceeds;
+  try {
+    applyTransaction({ stock, type, price, shares, date, note, syncCash: true });
+  } catch (error) {
+    if (typeof showToast === 'function') showToast(error.message);
+    return;
   }
-
-  // 寫入交易紀錄明細
-  if (!stock.transactions) stock.transactions = [];
-  stock.transactions.unshift({
-    id: Date.now().toString(),
-    type,
-    price,
-    shares,
-    fee,
-    tax,
-    date,
-    note,
-    isImported: false // 標記為手動新增
-  });
 
   saveState();
   closeAddTransactionForm();
