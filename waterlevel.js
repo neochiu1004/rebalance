@@ -1,9 +1,10 @@
 // ==========================================
 // MCE 模組化 - waterlevel.js (市場水位與斐波那契黃金標尺)
-// 版本: v14.3 (FinMind Native Direct Fetch & Stock-3 Alignment)
+// 版本: v14.6 (Chart.js Fibonacci & Trend Line Direct Integrated)
 // ==========================================
 
 let editingHpIndex = -1;
+let trendChartInstance = null;
 
 // 開啟設定高低點 Modal
 function openHighPointModal(index) {
@@ -72,7 +73,131 @@ function saveHighPoint(e) {
 }
 
 // ==========================================
-// [核心修正] 一鍵批次抓取所有持股近 1 年高低點 (與 stock-3 直連邏輯完全一致)
+// 趨勢走勢圖 Modal 渲染邏輯 (Chart.js 平行水位線)
+// ==========================================
+function openTrendModal(index) {
+    const stock = state.stocks[index];
+    if (!stock) return;
+
+    const modal = document.getElementById('trend-modal');
+    const content = document.getElementById('trend-modal-content');
+    const titleEl = document.getElementById('trend-stock-title');
+    const subTitleEl = document.getElementById('trend-stock-subtitle');
+    const noDataEl = document.getElementById('trend-no-data-msg');
+
+    if (titleEl) titleEl.innerText = `${typeof formatStockName === 'function' ? formatStockName(stock) : stock.symbol} 走勢分析`;
+    if (subTitleEl) subTitleEl.innerText = `現價 @${stock.price || stock.costPrice || '--'}`;
+
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    void modal.offsetWidth;
+    modal.classList.remove('opacity-0');
+    if (content) {
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }
+
+    if (!stock.historyData || stock.historyData.length === 0) {
+        if (noDataEl) noDataEl.classList.remove('hidden');
+        if (trendChartInstance) {
+            trendChartInstance.destroy();
+            trendChartInstance = null;
+        }
+        return;
+    }
+
+    if (noDataEl) noDataEl.classList.add('hidden');
+    renderTrendChart(stock);
+}
+
+function closeTrendModal() {
+    const modal = document.getElementById('trend-modal');
+    const content = document.getElementById('trend-modal-content');
+    if (!modal) return;
+
+    modal.classList.add('opacity-0');
+    if (content) {
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+    }
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 200);
+}
+
+function renderTrendChart(stock) {
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    if (trendChartInstance) {
+        trendChartInstance.destroy();
+        trendChartInstance = null;
+    }
+
+    const labels = stock.historyData.map(h => h.d);
+    const prices = stock.historyData.map(h => h.c);
+    const len = prices.length;
+
+    const hp = parseFloat(stock.highPrice) || 0;
+    const lp = parseFloat(stock.lowPrice) || 0;
+    const range = hp - lp;
+
+    // 建立平行水平線常數陣列
+    const makeDataset = (label, val, color, isDashed = true) => ({
+        label,
+        data: Array(len).fill(val),
+        borderColor: color,
+        borderWidth: 1.2,
+        borderDash: isDashed ? [4, 4] : [],
+        pointRadius: 0,
+        fill: false
+    });
+
+    const datasets = [{
+        label: '收盤價',
+        data: prices,
+        borderColor: '#0F172A',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false
+    }];
+
+    if (hp > 0) datasets.push(makeDataset('前高', hp, '#EF4444', false));
+    if (lp > 0) datasets.push(makeDataset('前低', lp, '#22C55E', false));
+
+    if (hp > 0 && lp > 0 && range > 0) {
+        datasets.push(makeDataset('0.786', lp + range * 0.786, '#94A3B8'));
+        datasets.push(makeDataset('0.66', lp + range * 0.66, '#CBD5E1'));
+        datasets.push(makeDataset('0.618', lp + range * 0.618, '#F59E0B'));
+        datasets.push(makeDataset('0.5', lp + range * 0.5, '#64748B'));
+    }
+
+    trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: { boxWidth: 12, font: { size: 10 } }
+                },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                x: { display: false },
+                y: { grid: { color: '#F1F5F9' }, ticks: { font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+// ==========================================
+// 一鍵批次抓取所有持股近 1 年高低點與歷史走勢
 // ==========================================
 async function fetchFinmindHighLow() {
     if (!state.finmindToken) {
@@ -104,7 +229,6 @@ async function fetchFinmindHighLow() {
             const stock = state.stocks[i];
             if (!stock.symbol) continue;
 
-            // 完全同步 stock-3.html 之直連原生 API
             const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
             
             const response = await fetch(url);
@@ -116,8 +240,8 @@ async function fetchFinmindHighLow() {
                 let minPrice = Infinity;
                 let maxDate = '';
                 let minDate = '';
+                const historyData = [];
 
-                // 逆向遍歷，尋找分割或減資斷層 (Drop >= 50%)
                 for (let j = resData.data.length - 1; j >= 0; j--) {
                     const day = resData.data[j];
                     
@@ -127,19 +251,21 @@ async function fetchFinmindHighLow() {
                     if (j > 0) {
                         const prevDay = resData.data[j - 1];
                         const priceDiffRatio = Math.abs(prevDay.close - day.close) / prevDay.close;
-                        
-                        // 若單日價格落差超過 50%，判定為分割/減資，停止往回追溯
-                        if (priceDiffRatio >= 0.5) {
-                            break;
-                        }
+                        if (priceDiffRatio >= 0.5) break;
                     }
                 }
+
+                // 精簡抽取歷史每日數據 [date, close]
+                resData.data.forEach(day => {
+                    historyData.push({ d: day.date, c: day.close });
+                });
 
                 if (maxPrice !== -Infinity && minPrice !== Infinity) {
                     stock.highPrice = maxPrice;
                     stock.highDate = maxDate;
                     stock.lowPrice = minPrice;
                     stock.lowDate = minDate;
+                    stock.historyData = historyData;
                     updatedCount++;
                 }
             }
@@ -147,8 +273,8 @@ async function fetchFinmindHighLow() {
 
         if (updatedCount > 0) {
             saveState();
-            renderWaterLevel(); // 刷新水位畫面
-            if (typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票的高低點`);
+            renderWaterLevel();
+            if (typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票的高低點與走勢圖`);
         } else {
             if (typeof showToast === 'function') showToast('未取得任何新資料');
         }
@@ -163,14 +289,14 @@ async function fetchFinmindHighLow() {
     }
 }
 
-// 單檔 Modal 內帶入 FinMind 近 1 年高低點 (同樣直連)
+// 單檔 Modal 內帶入 FinMind 近 1 年高低點
 async function autoFetchHighLow() {
     if (editingHpIndex === -1) return;
     const stock = state.stocks[editingHpIndex];
     let symbol = stock.symbol || '';
 
     if (!symbol) {
-        if (typeof showToast === 'function') showToast('該股票缺乏有效台股代號 (例: 2330)，無法查詢');
+        if (typeof showToast === 'function') showToast('該股票缺乏有效台股代號，無法查詢');
         return;
     }
 
@@ -211,6 +337,7 @@ async function autoFetchHighLow() {
         let minPrice = Infinity;
         let maxDate = '';
         let minDate = '';
+        const historyData = [];
 
         for (let j = dataList.length - 1; j >= 0; j--) {
             const day = dataList[j];
@@ -225,6 +352,10 @@ async function autoFetchHighLow() {
             }
         }
 
+        dataList.forEach(day => {
+            historyData.push({ d: day.date, c: day.close });
+        });
+
         if (maxPrice !== -Infinity && minPrice !== Infinity) {
             document.getElementById('hp-price').value = maxPrice;
             document.getElementById('hp-date').value = maxDate;
@@ -235,8 +366,9 @@ async function autoFetchHighLow() {
             state.stocks[editingHpIndex].highDate = maxDate;
             state.stocks[editingHpIndex].lowPrice = minPrice;
             state.stocks[editingHpIndex].lowDate = minDate;
+            state.stocks[editingHpIndex].historyData = historyData;
             
-            if (typeof showToast === 'function') showToast(`已成功透過 FinMind 帶入 ${symbol} 近 1 年極值！`);
+            if (typeof showToast === 'function') showToast(`已成功帶入 ${symbol} 近 1 年極值與歷史走勢！`);
         }
 
     } catch (err) {
@@ -377,12 +509,15 @@ function renderWaterLevel() {
         const dropSign = dropPct > 0 ? '+' : '';
 
         return `
-        <div class="glass-card p-5 mb-5 relative overflow-hidden transition-all hover:border-slate-300 shadow-sm">
+        <div class="glass-card p-5 mb-5 relative overflow-hidden transition-all hover:border-slate-300 shadow-sm cursor-pointer" onclick="openTrendModal(${idx})" title="點擊檢視 K 線與黃金尺標走勢圖">
             <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
                 <div class="flex flex-col gap-1">
-                    <h3 class="text-xl font-black text-slate-900 tracking-wide">${nameDisplay}</h3>
+                    <h3 class="text-xl font-black text-slate-900 tracking-wide flex items-center gap-2">
+                        ${nameDisplay}
+                        <span class="text-xs font-normal text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full">📈 走勢圖</span>
+                    </h3>
                 </div>
-                <button onclick="openHighPointModal(${idx})" class="text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm active:scale-95 transition-colors hover:bg-slate-100 shrink-0">⚡ 更新點位</button>
+                <button onclick="event.stopPropagation(); openHighPointModal(${idx})" class="text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm active:scale-95 transition-colors hover:bg-slate-100 shrink-0">⚡ 更新點位</button>
             </div>
 
             <div class="px-1 mb-5 relative">

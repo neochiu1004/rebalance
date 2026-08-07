@@ -136,6 +136,27 @@
         </div>
     </div>
 
+    <!-- 走勢圖 Modal -->
+    <div id="trend-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-white p-6 rounded-2xl shadow-xl max-w-lg w-full mx-4 transform scale-95 transition-transform duration-200" id="trend-modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="font-bold text-xl text-slate-800" id="trend-stock-title">股票走勢分析</h2>
+                    <p class="text-xs text-slate-400 mt-0.5" id="trend-stock-subtitle">近 1 年歷史走勢與黃金分割標尺</p>
+                </div>
+                <button onclick="closeTrendModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="relative w-full h-72 sm:h-80">
+                <canvas id="trendChart"></canvas>
+            </div>
+            <div id="trend-no-data-msg" class="hidden absolute inset-0 flex items-center justify-center bg-white/95 rounded-2xl text-center p-6 text-sm font-semibold text-slate-400">
+                尚無歷史資料，請先點擊「抓取 1 年高低」載入報價。
+            </div>
+        </div>
+    </div>
+
     <div id="edit-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
         <div class="bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="edit-modal-content">
             <div class="flex justify-between items-center mb-5">
