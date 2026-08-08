@@ -65,11 +65,8 @@ function renderStockDetailContent() {
     const marketVal = Math.round(shares * currentPrice);
     
     const costPrice = stock.costPrice !== undefined ? stock.costPrice : currentPrice;
-    let paidCost = stock.paidCost;
-    if (paidCost === undefined) {
-        const buyVal = Math.round(shares * costPrice);
-        paidCost = buyVal + Math.max(1, Math.round(buyVal * 0.001425 * 0.28));
-    }
+    const allInCost = calculateAllInCost(stock, currentPrice);
+    const paidCost = allInCost.totalCost;
     
     const pnl = marketVal - paidCost;
     const pnlPercent = paidCost > 0 ? (pnl / paidCost) * 100 : 0;
@@ -88,7 +85,7 @@ function renderStockDetailContent() {
         elPnl.className = `text-base font-black ${pnlColor}`;
     }
     if (elShares) elShares.innerText = `${fmt(shares)} 股`;
-    if (elCost) elCost.innerText = `@ ${fmtPrice(costPrice)}`;
+    if (elCost) elCost.innerText = `@ ${fmtPrice(allInCost.averageCost || costPrice)}`;
 
     // 切換頁籤按鈕樣式
     const tabOverviewBtn = document.getElementById('tab-btn-overview');

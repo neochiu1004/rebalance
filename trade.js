@@ -34,6 +34,42 @@ function renderTradeTab() {
                 <p class="text-xs text-slate-500 mt-1">手續費 0.1425%×28折（低消 1 元）、賣出證交稅 ETF 0.1% / 一般 0.3%，成本採移動加權平均</p>
             </div>
 
+            <!-- 直接新增尚未建檔的股票 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-lime-200 p-6">
+                <h3 class="font-black text-base text-slate-900 mb-1">新增股票</h3>
+                <p class="text-xs text-slate-500 mb-4">可直接輸入股票代號、股數與成本，新增後即可在本頁記錄交易。</p>
+                <form id="add-stock-form" onsubmit="addStockSubmit(event)" class="space-y-3">
+                    <select id="quick-select-stock" onchange="quickSelectStock(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-sm text-slate-700 focus:outline-none">
+                        <option value="">-- 自現有持股帶入 --</option>
+                    </select>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">台股代號</label>
+                            <input type="text" id="add-symbol" placeholder="例: 0050" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">持有股數</label>
+                            <input type="number" id="add-shares" placeholder="例: 1000" min="1" step="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">名稱(選填)</label>
+                            <input type="text" id="add-name" placeholder="自動取得" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">成本(選填)</label>
+                            <input type="number" id="add-price" placeholder="市價代入" min="0" step="any" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">Beta(選填)</label>
+                            <input type="number" id="add-beta" placeholder="預設 1" min="0" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
+                        </div>
+                    </div>
+                    <button type="submit" id="add-submit-btn" class="w-full bg-[#84CC16] hover:bg-[#65A30D] text-white rounded-xl py-3 font-bold mt-2 transition-all shadow-md flex justify-center items-center gap-2">新增此持股</button>
+                </form>
+            </div>
+
             <!-- 主表單卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <!-- 買賣切換 -->
@@ -49,7 +85,7 @@ function renderTradeTab() {
                         <select id="trade-stock-select" onchange="onTradeStockChange()" class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
                             ${stockOptions}
                         </select>
-                        ${state.stocks.length === 0 ? '<p class="text-xs text-slate-400 mt-1">尚無持股，請先到「資產」頁新增。</p>' : ''}
+                        ${state.stocks.length === 0 ? '<p class="text-xs text-slate-400 mt-1">尚無持股，請先使用上方「新增股票」建立持股。</p>' : ''}
                     </div>
 
                     <!-- 日期與股數 -->

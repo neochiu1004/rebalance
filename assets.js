@@ -35,14 +35,9 @@ function calculatePortfolioState() {
             const val = Math.round(s.shares * currentPrice); 
             totalDisplayStockValue += val; 
 
-            const costPrice = s.costPrice !== undefined ? s.costPrice : currentPrice;
-            let paidCost = s.paidCost;
-            if (paidCost === undefined) {
-                const buyValue = Math.round(s.shares * costPrice);
-                paidCost = buyValue + Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
-            }
-            totalPaidCostSum += paidCost;
-            totalGrossPnL += (val - paidCost);
+            const allInCost = calculateAllInCost(s, currentPrice);
+            totalPaidCostSum += allInCost.totalCost;
+            totalGrossPnL += (val - allInCost.totalCost);
 
             const weight = parseFloat(s.targetWeight) || 0;
             if (weight > 0) {
@@ -149,14 +144,11 @@ function updateAllData() {
             const symbolDisplay = escapeHtml(s.symbol ? `${s.symbol}.TW` : '');
             
             const isExcluded = (parseFloat(s.targetWeight) || 0) <= 0;
-            const opacityClass = isExcluded ? 'opacity-40 grayscale pointer-events-none' : '';
 
             const costPrice = s.costPrice !== undefined ? s.costPrice : currentPrice;
-            let paidCost = s.paidCost;
-            if (paidCost === undefined) {
-                const buyValue = Math.round(s.shares * costPrice);
-                paidCost = buyValue + Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
-            }
+            const allInCost = calculateAllInCost(s, currentPrice);
+            const paidCost = allInCost.totalCost;
+            const displayAverageCost = allInCost.averageCost || costPrice;
             
             const grossPnL = currentValue - paidCost;
             const grossPnLPercent = paidCost > 0 ? (grossPnL / paidCost) * 100 : 0;
@@ -178,18 +170,14 @@ function updateAllData() {
             }
             
             return `
-            <div class="glass-card p-4 transition-all hover:border-slate-300 relative overflow-hidden ${opacityClass}">
-                ${isExcluded ? '<div class="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[1px]"><span class="bg-slate-800 text-white px-3 py-1.5 rounded-lg font-bold text-sm shadow-md transform -rotate-12">不參與平衡</span></div>' : ''}
+            <div class="glass-card p-4 transition-all hover:border-slate-300 relative overflow-hidden">
                 
                 <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
                     <div class="flex items-center gap-2 max-w-[65%]">
                         <span class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-md font-black shrink-0 shadow-inner">${Math.round(ratio)}%</span>
-                        <div class="font-bold text-slate-900 text-base tracking-wide truncate">${nameDisplay} <span class="text-slate-400 text-xs font-medium ml-1">${symbolDisplay} β=${s.beta || 1}</span></div>
+                        <div class="font-bold text-slate-900 text-base tracking-wide truncate">${nameDisplay} <span class="text-slate-400 text-xs font-medium ml-1">${symbolDisplay} β=${s.beta || 1}</span>${isExcluded ? '<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded ml-1">不參與平衡</span>' : ''}</div>
                     </div>
                     <div class="flex items-center gap-1 shrink-0 relative z-20">
-                        <button onclick="openTransactionModal(${index})" class="text-green-600 hover:text-green-800 hover:bg-green-50 p-1.5 rounded-full transition-colors" title="交易記帳">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                        </button>
                         <button onclick="openEditModal(${index})" class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-full transition-colors" title="編輯參數">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
@@ -209,8 +197,8 @@ function updateAllData() {
                         ${dailyChangeHTML}
                     </div>
                     <div class="price-badge-blue p-2 rounded-xl flex flex-col justify-center items-center text-center">
-                        <span class="text-[10px] font-bold text-blue-600 mb-0.5">成交均價</span>
-                        <span class="text-[15px] sm:text-lg font-black text-blue-700 tracking-tight">@${fmtPrice(costPrice)}</span>
+                        <span class="text-[10px] font-bold text-blue-600 mb-0.5">含交易成本均價</span>
+                        <span class="text-[15px] sm:text-lg font-black text-blue-700 tracking-tight">@${fmtPrice(displayAverageCost)}</span>
                     </div>
                 </div>
 
@@ -219,6 +207,7 @@ function updateAllData() {
                     <div class="flex items-center gap-1">目前盈虧: <span class="font-bold ${pnlColorClass}">${pnlSign}NT$${fmt(Math.abs(grossPnL))} (${pnlSign}${Math.abs(grossPnLPercent).toFixed(2)}%)</span></div>
                     <div class="flex items-center gap-1">目前市值: <span class="font-bold text-slate-800">NT$${fmt(currentValue)}</span></div>
                     <div class="flex items-center gap-1">付出成本: <span class="font-bold text-slate-800">NT$${fmt(paidCost)}</span></div>
+                    <div class="col-span-2 text-[10px] text-slate-400">含買入成本＋現價預估賣出手續費 NT$${fmt(allInCost.sellFee)}＋交易稅 NT$${fmt(allInCost.sellTax)}</div>
                 </div>
             </div>`;
         }).join('');
@@ -522,20 +511,23 @@ function quickSelectStock(indexStr) {
 function executeMergeOrAdd(newStock) {
     let existing = state.stocks.find(s => s.symbol && s.symbol === newStock.symbol);
     if (existing) {
-        const oldShares = existing.shares;
-        const newShares = newStock.shares;
+        const oldShares = Number(existing.shares) || 0;
+        const newShares = Number(newStock.shares) || 0;
         const totalShares = oldShares + newShares;
-        
+
         let oldPaidCost = existing.paidCost;
         if (oldPaidCost === undefined) {
-            const oldBuyVal = Math.round(oldShares * (existing.costPrice || existing.price));
+            const oldBuyVal = Math.round(oldShares * (Number(existing.costPrice) || Number(existing.price) || 0));
             oldPaidCost = oldBuyVal + Math.max(1, Math.round(oldBuyVal * 0.001425 * 0.28));
         }
-        existing.paidCost = oldPaidCost + newStock.paidCost;
-        
+
+        const addedPaidCost = Number(newStock.paidCost) || 0;
+        const oldCostPrice = Number(existing.costPrice) || Number(existing.price) || 0;
+        const addedCostPrice = Number(newStock.costPrice) || 0;
+        existing.paidCost = Number(oldPaidCost) + addedPaidCost;
         if (totalShares > 0) {
-            const oldCostPrice = existing.costPrice || existing.price || 0;
-            existing.costPrice = ((oldShares * oldCostPrice) + (newShares * newStock.costPrice)) / totalShares;
+            // 合併時以兩批買入的實際成本重新計算均價，避免只增加股數而遺漏新增成本。
+            existing.costPrice = ((oldShares * oldCostPrice) + (newShares * addedCostPrice)) / totalShares;
         }
         existing.shares = totalShares;
         if (!existing.name && newStock.name) existing.name = newStock.name;
@@ -552,6 +544,7 @@ function executeMergeOrAdd(newStock) {
     saveState();
     if (typeof renderTargetStockWeights === 'function') renderTargetStockWeights();
     updateAllData();
+    if (typeof renderTradeTab === 'function' && document.getElementById('trade-tab-content')) renderTradeTab();
     const form = document.getElementById('add-stock-form');
     if (form) form.reset();
 }

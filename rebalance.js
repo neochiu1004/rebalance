@@ -274,8 +274,6 @@ function renderRebalanceResult(metrics) {
     let totalStockDiff = 0;
     let totalBuyNeed = 0;
     let totalSellValue = 0;
-    const minTradeValue = Math.max(0, Number(state.minTradeValue) || 0);
-
     validTargetStocks.forEach((s) => {
         const weight = parseFloat(s.targetWeight) || 0;
         const currentPrice = s.price || s.costPrice || 0;
@@ -291,23 +289,17 @@ function renderRebalanceResult(metrics) {
             diffStock = individualTargetValue - currentValue;
         }
         
-        const shouldTrade = Math.abs(diffStock) >= minTradeValue;
-        if (shouldTrade) {
-            totalStockDiff += diffStock;
-            if (diffStock >= 0) totalBuyNeed += diffStock;
-            else totalSellValue += Math.abs(diffStock);
-        }
+        totalStockDiff += diffStock;
+        if (diffStock >= 0) totalBuyNeed += diffStock;
+        else totalSellValue += Math.abs(diffStock);
         const suggestShares = currentPrice > 0 ? Math.abs(diffStock) / currentPrice : 0;
         
         const isBuy = diffStock >= 0;
         const actionType = isBuy ? '買入' : '賣出';
         const actionColorClass = isBuy ? 'text-slate-900 font-black' : 'text-[#EF4444] font-black'; 
         const nameDisplay = escapeHtml(formatStockName(s));
-        const actionDetail = shouldTrade
-            ? `<div class="text-sm ${actionColorClass}">${actionType} NT$ ${fmt(Math.abs(diffStock))}</div>
-               <div class="text-[11px] text-slate-400 font-medium">(約 ${fmt(suggestShares)} 股)</div>`
-            : `<div class="text-xs font-bold text-slate-400">暫不交易</div>
-               <div class="text-[10px] text-slate-400">差額低於 NT$${fmt(minTradeValue)}</div>`;
+        const actionDetail = `<div class="text-sm ${actionColorClass}">${actionType} NT$ ${fmt(Math.abs(diffStock))}</div>
+               <div class="text-[11px] text-slate-400 font-medium">(約 ${fmt(suggestShares)} 股)</div>`;
 
         subItemsHTML += `
         <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 px-1">

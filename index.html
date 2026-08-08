@@ -234,7 +234,7 @@
                         <div class="text-sm font-black text-slate-800" id="detail-shares">0 股</div>
                     </div>
                     <div>
-                        <div class="text-[10px] font-bold text-slate-400">成交均價</div>
+                        <div class="text-[10px] font-bold text-slate-400">含交易成本均價</div>
                         <div class="text-sm font-black text-blue-600" id="detail-cost-price">@0</div>
                     </div>
                 </div>
@@ -447,21 +447,12 @@
             </div>
 
             <div class="glass-card p-4 mb-6">
-                <div class="text-xs font-bold text-slate-400 mb-3">策略規則</div>
-                <div class="grid grid-cols-2 gap-3">
-                    <label class="text-xs font-semibold text-slate-600">
-                        最低交易金額
-                        <div class="flex items-center gap-1 mt-1">
-                            <span class="text-slate-400">NT$</span>
-                            <input id="min-trade-value" type="number" min="0" step="100" value="1000" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-800">
-                        </div>
-                    </label>
-                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 pt-5">
-                        <input id="cash-flow-first" type="checkbox" class="w-4 h-4 accent-slate-900">
-                        先用賣出所得補買進
-                    </label>
-                </div>
-                <p class="text-[10px] text-slate-400 mt-3">低於最低交易金額的調整會標記為暫不交易；此頁只產生建議，不會自動下單。</p>
+                <div class="text-xs font-bold text-slate-400 mb-3">資金估算</div>
+                <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <input id="cash-flow-first" type="checkbox" class="w-4 h-4 accent-slate-900">
+                    先用預計賣出所得補買進
+                </label>
+                <p class="text-[10px] text-slate-400 mt-2">只影響再平衡建議中的可用資金估算，不會自動下單。</p>
             </div>
 
             <!-- 4. 建議動作區塊 -->
@@ -523,54 +514,6 @@
                         <input type="file" id="json-upload" accept=".json" onchange="importBackup(event)" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer">
                     </div>
                 </div>
-            </div>
-
-            <div class="glass-card p-5 mb-6 border-l-4 border-l-[#84CC16]">
-                <div class="flex items-center gap-2 mb-3">
-                    <h2 class="font-bold text-slate-800">批次匯入持股 (CSV)</h2>
-                </div>
-                <p class="text-[11px] font-medium text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg leading-relaxed">
-                    請上傳券商「未實現損益」匯出之 CSV 檔。<br>
-                    <span class="text-amber-600 font-bold">自動疊加機制：</span>若已有相同股票，將自動合併股數並計算加權平均成本。
-                </p>
-                <div class="relative overflow-hidden inline-block w-full">
-                    <button class="w-full bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl inline-flex items-center justify-center gap-2 transition-colors"><span>選擇 CSV 檔案...</span></button>
-                    <input type="file" id="csv-upload" accept=".csv" class="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer">
-                </div>
-            </div>
-
-            <div class="glass-card p-5 mb-6">
-                <div class="flex items-center gap-2 mb-3"><h2 class="font-bold text-slate-800">手動單筆新增</h2></div>
-                <form id="add-stock-form" onsubmit="addStockSubmit(event)" class="space-y-3">
-                    <select id="quick-select-stock" onchange="quickSelectStock(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-sm text-slate-700 focus:outline-none">
-                        <option value="">-- 自現有持股帶入 --</option>
-                    </select>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">台股代號</label>
-                            <input type="text" id="add-symbol" placeholder="例: 0050" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">持有股數</label>
-                            <input type="number" id="add-shares" placeholder="例: 1000" min="0" step="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">名稱(選填)</label>
-                            <input type="text" id="add-name" placeholder="自動取得" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">成本(選填)</label>
-                            <input type="number" id="add-price" placeholder="市價代入" min="0" step="any" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">Beta(選填)</label>
-                            <input type="number" id="add-beta" placeholder="預設 1" min="0" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                    </div>
-                    <button type="submit" id="add-submit-btn" class="w-full bg-[#84CC16] hover:bg-[#65A30D] text-white rounded-xl py-3 font-bold mt-2 transition-all shadow-md flex justify-center items-center gap-2">新增此持股</button>
-                </form>
             </div>
 
             <div class="glass-card p-5 mb-8 border-t-4 border-t-amber-500">
@@ -711,14 +654,12 @@
             const tokenInput = document.getElementById('finmind-token-input');
             const devSlider = document.getElementById('deviation-slider');
             const apiKeyInput = document.getElementById('api-key-input');
-            const minTradeValue = document.getElementById('min-trade-value');
             const cashFlowFirst = document.getElementById('cash-flow-first');
             
             if (slider) slider.value = state.targetStockRatio;
             if (tokenInput) tokenInput.value = state.finmindToken || '';
             if (devSlider) devSlider.value = state.deviation || 5;
             if (apiKeyInput) apiKeyInput.value = state.apiKey || '';
-            if (minTradeValue) minTradeValue.value = state.minTradeValue ?? 1000;
             if (cashFlowFirst) cashFlowFirst.checked = state.cashFlowFirst !== false;
             
             if (typeof updateTargetUI === 'function') updateTargetUI();
@@ -750,16 +691,6 @@
                 });
             }
 
-            const minTradeValue = document.getElementById('min-trade-value');
-            if (minTradeValue) {
-                minTradeValue.addEventListener('change', (e) => {
-                    state.minTradeValue = Math.max(0, parseFloat(e.target.value) || 0);
-                    e.target.value = state.minTradeValue;
-                    saveState();
-                    if (typeof renderRebalanceResult === 'function') renderRebalanceResult();
-                });
-            }
-
             const cashFlowFirst = document.getElementById('cash-flow-first');
             if (cashFlowFirst) {
                 cashFlowFirst.addEventListener('change', (e) => {
@@ -769,10 +700,6 @@
                 });
             }
 
-            const csvUpload = document.getElementById('csv-upload');
-            if (csvUpload) {
-                csvUpload.addEventListener('change', handleCSVUpload);
-            }
         }
 
         function saveFinmindToken() {

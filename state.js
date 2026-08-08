@@ -29,7 +29,6 @@ const state = {
     cash: Number.isFinite(parseFloat(localStorage.getItem('mce_cash'))) ? parseFloat(localStorage.getItem('mce_cash')) : 0,
     targetStockRatio: Number.isFinite(parseFloat(localStorage.getItem('mce_target_stock'))) ? parseFloat(localStorage.getItem('mce_target_stock')) : 50,
     deviation: Number.isFinite(parseFloat(localStorage.getItem('mce_deviation'))) ? parseFloat(localStorage.getItem('mce_deviation')) : 5,
-    minTradeValue: Number.isFinite(parseFloat(localStorage.getItem('mce_min_trade_value'))) ? parseFloat(localStorage.getItem('mce_min_trade_value')) : 1000,
     cashFlowFirst: localStorage.getItem('mce_cash_flow_first') !== 'false',
     stocks: Array.isArray(storedStocks) ? storedStocks : [],
     apiKey: localStorage.getItem('mce_apikey') || '',
@@ -42,7 +41,6 @@ function saveState() {
     localStorage.setItem('mce_cash', state.cash);
     localStorage.setItem('mce_target_stock', state.targetStockRatio);
     localStorage.setItem('mce_deviation', state.deviation);
-    localStorage.setItem('mce_min_trade_value', state.minTradeValue);
     localStorage.setItem('mce_cash_flow_first', state.cashFlowFirst);
     localStorage.setItem('mce_rebalance_mode', state.rebalanceMode);
     localStorage.setItem('mce_apikey', state.apiKey);
@@ -65,7 +63,6 @@ function exportBackup() {
         cash: state.cash,
         targetStockRatio: state.targetStockRatio,
         deviation: state.deviation,
-        minTradeValue: state.minTradeValue,
         cashFlowFirst: state.cashFlowFirst,
         rebalanceMode: state.rebalanceMode,
         stocks: state.stocks
@@ -112,7 +109,6 @@ function processImport(data) {
     state.cash = data.cash || 0;
     state.targetStockRatio = data.targetStockRatio !== undefined ? data.targetStockRatio : 50;
     state.deviation = data.deviation !== undefined ? data.deviation : 5;
-    state.minTradeValue = data.minTradeValue !== undefined ? data.minTradeValue : 1000;
     state.cashFlowFirst = data.cashFlowFirst !== undefined ? data.cashFlowFirst : true;
     state.rebalanceMode = data.rebalanceMode || 'global';
     // API 金鑰不再由備份檔匯入，避免把金鑰散播到下載檔或第三方備份。

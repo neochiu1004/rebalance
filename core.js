@@ -27,6 +27,33 @@ function calculateTradingCost({ type, price, shares, stock = {}, feeOverride = n
     return { amount, fee, tax, netAmount };
 }
 
+// 顯示用成本：買入實付成本，加上以現價賣出時預估的手續費與交易稅。
+// 不改寫 stock.paidCost，避免每次報價更新都把預估賣出費用重複累加。
+function calculateAllInCost(stock = {}, currentPrice = null) {
+    const shares = Number(stock.shares) || 0;
+    const buyPrice = Number(stock.costPrice) || Number(stock.price) || 0;
+    const buyAmount = shares * buyPrice;
+    const fallbackBuyCost = buyAmount > 0
+        ? buyAmount + Math.max(1, Math.round(buyAmount * 0.001425 * 0.28))
+        : 0;
+    const buyCost = Number.isFinite(Number(stock.paidCost))
+        ? Number(stock.paidCost)
+        : fallbackBuyCost;
+    const sellPrice = Number(currentPrice) || Number(stock.price) || buyPrice;
+    const sellCost = shares > 0 && sellPrice > 0
+        ? calculateTradingCost({ type: 'sell', price: sellPrice, shares, stock })
+        : { fee: 0, tax: 0 };
+    const totalCost = buyCost + sellCost.fee + sellCost.tax;
+
+    return {
+        buyCost,
+        sellFee: sellCost.fee,
+        sellTax: sellCost.tax,
+        totalCost,
+        averageCost: shares > 0 ? totalCost / shares : 0
+    };
+}
+
 function applyTransaction({
     stock,
     type,
