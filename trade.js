@@ -5,7 +5,7 @@
 
 let tradeConfig = {
     type: 'buy', // 'buy' 或 'sell'
-    stockIndex: -1,
+    stockIndex: -2, // -2 = 新增股票（首筆買進），-1 = 尚未選擇
     syncCash: true,
     manualFee: false
 };
@@ -15,7 +15,7 @@ function renderTradeTab() {
     const container = document.getElementById('trade-tab-content'); // 假設 HTML 中有此容器
     if (!container) return;
 
-    let stockOptions = `<option value="-1" disabled selected>選擇持股</option>`;
+    let stockOptions = `<option value="-2">＋新增股票（首筆買進）</option>`;
     if (state && state.stocks) {
         state.stocks.forEach((s, idx) => {
             const name = s.name || s.symbol;
@@ -34,42 +34,6 @@ function renderTradeTab() {
                 <p class="text-xs text-slate-500 mt-1">手續費 0.1425%×28折（低消 1 元）、賣出證交稅 ETF 0.1% / 一般 0.3%，成本採移動加權平均</p>
             </div>
 
-            <!-- 直接新增尚未建檔的股票 -->
-            <div class="bg-white rounded-2xl shadow-sm border border-lime-200 p-6">
-                <h3 class="font-black text-base text-slate-900 mb-1">新增股票</h3>
-                <p class="text-xs text-slate-500 mb-4">可直接輸入股票代號、股數與成本，新增後即可在本頁記錄交易。</p>
-                <form id="add-stock-form" onsubmit="addStockSubmit(event)" class="space-y-3">
-                    <select id="quick-select-stock" onchange="quickSelectStock(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-sm text-slate-700 focus:outline-none">
-                        <option value="">-- 自現有持股帶入 --</option>
-                    </select>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">台股代號</label>
-                            <input type="text" id="add-symbol" placeholder="例: 0050" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">持有股數</label>
-                            <input type="number" id="add-shares" placeholder="例: 1000" min="1" step="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-slate-800 focus:outline-none">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2">
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">名稱(選填)</label>
-                            <input type="text" id="add-name" placeholder="自動取得" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">成本(選填)</label>
-                            <input type="number" id="add-price" placeholder="市價代入" min="0" step="any" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 mb-1">Beta(選填)</label>
-                            <input type="number" id="add-beta" placeholder="預設 1" min="0" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-2 font-semibold text-xs focus:outline-none">
-                        </div>
-                    </div>
-                    <button type="submit" id="add-submit-btn" class="w-full bg-[#84CC16] hover:bg-[#65A30D] text-white rounded-xl py-3 font-bold mt-2 transition-all shadow-md flex justify-center items-center gap-2">新增此持股</button>
-                </form>
-            </div>
-
             <!-- 主表單卡片 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
                 <!-- 買賣切換 -->
@@ -85,7 +49,22 @@ function renderTradeTab() {
                         <select id="trade-stock-select" onchange="onTradeStockChange()" class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
                             ${stockOptions}
                         </select>
-                        ${state.stocks.length === 0 ? '<p class="text-xs text-slate-400 mt-1">尚無持股，請先使用上方「新增股票」建立持股。</p>' : ''}
+                        <p class="text-xs text-slate-400 mt-1">買進時可選「新增股票（首筆買進）」建立持股。</p>
+                    </div>
+
+                    <div id="new-stock-fields" class="grid grid-cols-2 gap-3 bg-lime-50 border border-lime-100 rounded-xl p-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">台股代號</label>
+                            <input type="text" id="trade-new-symbol" placeholder="例：0050" class="w-full border-slate-200 rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">名稱（選填）</label>
+                            <input type="text" id="trade-new-name" placeholder="例：元大台灣50" class="w-full border-slate-200 rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1">Beta（選填）</label>
+                            <input type="number" id="trade-new-beta" min="0" step="0.1" value="1" class="w-full border-slate-200 rounded-lg text-sm">
+                        </div>
                     </div>
 
                     <!-- 日期與股數 -->
@@ -173,6 +152,7 @@ function renderTradeTab() {
     if (tradeConfig.stockIndex !== -1) {
         document.getElementById('trade-stock-select').value = tradeConfig.stockIndex;
     }
+    onTradeStockChange();
     renderGlobalTradeHistory();
 }
 
@@ -183,6 +163,11 @@ function setTradeTabType(type) {
 
 function onTradeStockChange() {
     tradeConfig.stockIndex = parseInt(document.getElementById('trade-stock-select').value);
+    const isNew = tradeConfig.stockIndex === -2;
+    const fields = document.getElementById('new-stock-fields');
+    if (fields) fields.classList.toggle('hidden', !isNew);
+    const buyOnly = tradeConfig.type === 'buy';
+    if (fields) fields.classList.toggle('hidden', !isNew || !buyOnly);
     calcTradePreview();
 }
 
@@ -205,7 +190,10 @@ function toggleSyncCash() {
 // 動態試算（使用共用交易核心）
 function calcTradePreview(isManualFeeInput = false) {
     if (tradeConfig.stockIndex === -1) return;
-    const stock = state.stocks[tradeConfig.stockIndex];
+    const stock = tradeConfig.stockIndex === -2 ? {
+        symbol: document.getElementById('trade-new-symbol')?.value || '',
+        name: document.getElementById('trade-new-name')?.value || ''
+    } : state.stocks[tradeConfig.stockIndex];
     
     const price = parseFloat(document.getElementById('trade-price').value) || 0;
     const shares = parseInt(document.getElementById('trade-shares').value) || 0;
@@ -238,7 +226,7 @@ function submitTradeForm(e) {
         return;
     }
 
-    const stock = state.stocks[tradeConfig.stockIndex];
+    const isNewStock = tradeConfig.stockIndex === -2;
     const price = parseFloat(document.getElementById('trade-price').value) || 0;
     const shares = parseInt(document.getElementById('trade-shares').value) || 0;
     const date = document.getElementById('trade-date').value;
@@ -246,6 +234,35 @@ function submitTradeForm(e) {
     const isBuy = tradeConfig.type === 'buy';
 
     if (price <= 0 || shares <= 0) return;
+
+    if (isNewStock && !isBuy) {
+        if(typeof showToast === 'function') showToast('賣出交易請先選擇現有持股');
+        return;
+    }
+
+    let stock;
+    if (isNewStock) {
+        const symbol = document.getElementById('trade-new-symbol').value.trim();
+        if (!symbol) {
+            if(typeof showToast === 'function') showToast('請輸入股票代號');
+            return;
+        }
+        stock = state.stocks.find(item => String(item.symbol).toUpperCase() === symbol.toUpperCase());
+        if (!stock) {
+            stock = {
+                symbol,
+                name: document.getElementById('trade-new-name').value.trim() || symbol,
+                shares: 0,
+                price,
+                costPrice: 0,
+                paidCost: 0,
+                beta: parseFloat(document.getElementById('trade-new-beta').value) || 1,
+                transactions: []
+            };
+        }
+    } else {
+        stock = state.stocks[tradeConfig.stockIndex];
+    }
 
     try {
         applyTransaction({
@@ -262,6 +279,8 @@ function submitTradeForm(e) {
         if(typeof showToast === 'function') showToast(error.message);
         return;
     }
+
+    if (isNewStock && !state.stocks.includes(stock)) state.stocks.push(stock);
 
     saveState();
     if(typeof updateAllData === 'function') updateAllData();

@@ -82,11 +82,22 @@ function applyTransaction({
 
     if (type === 'buy') {
         const previousShares = Number(stock.shares) || 0;
-        const previousCost = (Number(stock.costPrice) || 0) * previousShares;
+        const previousCost = Number.isFinite(Number(stock.paidCost))
+            ? Number(stock.paidCost)
+            : (Number(stock.costPrice) || Number(stock.price) || 0) * previousShares;
         stock.shares = previousShares + quantity;
-        stock.costPrice = (previousCost + cost.netAmount) / stock.shares;
+        stock.paidCost = previousCost + cost.netAmount;
+        stock.costPrice = stock.shares > 0 ? stock.paidCost / stock.shares : 0;
     } else {
-        stock.shares = (Number(stock.shares) || 0) - quantity;
+        const previousShares = Number(stock.shares) || 0;
+        const previousCost = Number.isFinite(Number(stock.paidCost))
+            ? Number(stock.paidCost)
+            : (Number(stock.costPrice) || Number(stock.price) || 0) * previousShares;
+        const averageBuyCost = previousShares > 0 ? previousCost / previousShares : 0;
+        stock.shares = previousShares - quantity;
+        // 賣出只移除售出股數對應的歷史買入成本，避免剩餘持股仍帶著已賣出的成本。
+        stock.paidCost = Math.max(0, previousCost - averageBuyCost * quantity);
+        if (stock.shares === 0) stock.costPrice = 0;
     }
 
     if (syncCash) state.cash = (Number(state.cash) || 0) + (type === 'buy' ? -cost.netAmount : cost.netAmount);

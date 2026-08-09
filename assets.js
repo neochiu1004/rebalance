@@ -18,6 +18,41 @@ const symbolMap = {
     '欣興': '3037'
 };
 
+// 將交易簿彙整成總覽可讀的成本明細。
+function calculateTransactionBreakdown(stock = {}) {
+    const breakdown = {
+        buyAmount: 0,
+        buyFee: 0,
+        buyTax: 0,
+        sellAmount: 0,
+        sellFee: 0,
+        sellTax: 0,
+        buyShares: 0,
+        sellShares: 0
+    };
+
+    (Array.isArray(stock.transactions) ? stock.transactions : []).forEach(transaction => {
+        const amount = (Number(transaction.price) || 0) * (Number(transaction.shares) || 0);
+        const fee = Number(transaction.fee) || 0;
+        const tax = Number(transaction.tax) || 0;
+        if (transaction.type === 'buy') {
+            breakdown.buyAmount += amount;
+            breakdown.buyFee += fee;
+            breakdown.buyTax += tax;
+            breakdown.buyShares += Number(transaction.shares) || 0;
+        } else if (transaction.type === 'sell') {
+            breakdown.sellAmount += amount;
+            breakdown.sellFee += fee;
+            breakdown.sellTax += tax;
+            breakdown.sellShares += Number(transaction.shares) || 0;
+        }
+    });
+
+    breakdown.buyTotal = breakdown.buyAmount + breakdown.buyFee + breakdown.buyTax;
+    breakdown.sellNet = breakdown.sellAmount - breakdown.sellFee - breakdown.sellTax;
+    return breakdown;
+}
+
 // ==========================================
 // 核心數據引擎 (修復 NaN 錯誤的關鍵)
 // ==========================================
@@ -149,6 +184,7 @@ function updateAllData() {
             const allInCost = calculateAllInCost(s, currentPrice);
             const paidCost = allInCost.totalCost;
             const displayAverageCost = allInCost.averageCost || costPrice;
+            const transactionBreakdown = calculateTransactionBreakdown(s);
             
             const grossPnL = currentValue - paidCost;
             const grossPnLPercent = paidCost > 0 ? (grossPnL / paidCost) * 100 : 0;
@@ -207,7 +243,18 @@ function updateAllData() {
                     <div class="flex items-center gap-1">目前盈虧: <span class="font-bold ${pnlColorClass}">${pnlSign}NT$${fmt(Math.abs(grossPnL))} (${pnlSign}${Math.abs(grossPnLPercent).toFixed(2)}%)</span></div>
                     <div class="flex items-center gap-1">目前市值: <span class="font-bold text-slate-800">NT$${fmt(currentValue)}</span></div>
                     <div class="flex items-center gap-1">付出成本: <span class="font-bold text-slate-800">NT$${fmt(paidCost)}</span></div>
-                    <div class="col-span-2 text-[10px] text-slate-400">含買入成本＋現價預估賣出手續費 NT$${fmt(allInCost.sellFee)}＋交易稅 NT$${fmt(allInCost.sellTax)}</div>
+                    <div class="col-span-2 mt-1 pt-2 border-t border-slate-100">
+                        <div class="text-[10px] font-black text-slate-500 mb-1.5">成本明細</div>
+                        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                            <div>買進成交金額 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyAmount)}</span></div>
+                            <div>買進手續費 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyFee)}</span></div>
+                            <div>賣出成交金額 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellAmount)}</span></div>
+                            <div>賣出手續費 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellFee)}</span></div>
+                            <div>交易稅 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellTax)}</span></div>
+                            <div>賣出實收金額 <span class="font-bold text-blue-600">NT$${fmt(transactionBreakdown.sellNet)}</span></div>
+                        </div>
+                        <div class="mt-1 text-[10px] text-slate-400">目前持有買入成本 NT$${fmt(allInCost.buyCost)}；若以現價賣出，預估手續費 NT$${fmt(allInCost.sellFee)}、交易稅 NT$${fmt(allInCost.sellTax)}。</div>
+                    </div>
                 </div>
             </div>`;
         }).join('');
@@ -522,12 +569,10 @@ function executeMergeOrAdd(newStock) {
         }
 
         const addedPaidCost = Number(newStock.paidCost) || 0;
-        const oldCostPrice = Number(existing.costPrice) || Number(existing.price) || 0;
-        const addedCostPrice = Number(newStock.costPrice) || 0;
         existing.paidCost = Number(oldPaidCost) + addedPaidCost;
         if (totalShares > 0) {
-            // 合併時以兩批買入的實際成本重新計算均價，避免只增加股數而遺漏新增成本。
-            existing.costPrice = ((oldShares * oldCostPrice) + (newShares * addedCostPrice)) / totalShares;
+            // 均價與 paidCost 使用同一個含手續費的實際買入成本基準。
+            existing.costPrice = existing.paidCost / totalShares;
         }
         existing.shares = totalShares;
         if (!existing.name && newStock.name) existing.name = newStock.name;
