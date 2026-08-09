@@ -248,12 +248,10 @@ function updateAllData() {
                         <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-400">
                             <div>買進成交金額 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyAmount)}</span></div>
                             <div>買進手續費 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyFee)}</span></div>
-                            <div>賣出成交金額 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellAmount)}</span></div>
-                            <div>賣出手續費 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellFee)}</span></div>
-                            <div>交易稅 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.sellTax)}</span></div>
-                            <div>賣出實收金額 <span class="font-bold text-blue-600">NT$${fmt(transactionBreakdown.sellNet)}</span></div>
+                            <div>若以現價賣出手續費 <span class="font-bold text-slate-700">NT$${fmt(allInCost.sellFee)}</span></div>
+                            <div>若以現價賣出交易稅 <span class="font-bold text-slate-700">NT$${fmt(allInCost.sellTax)}</span></div>
                         </div>
-                        <div class="mt-1 text-[10px] text-slate-400">目前持有買入成本 NT$${fmt(allInCost.buyCost)}；若以現價賣出，預估手續費 NT$${fmt(allInCost.sellFee)}、交易稅 NT$${fmt(allInCost.sellTax)}。</div>
+                        <div class="mt-1 text-[10px] text-slate-400">目前持有買入成本 NT$${fmt(allInCost.buyCost)}。</div>
                     </div>
                 </div>
             </div>`;

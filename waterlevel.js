@@ -163,6 +163,23 @@ function renderTrendChart(stock) {
         fill: false
     });
 
+    // 逐日計算移動平均，避免把最後一個均線值複製成水平線。
+    const makeMovingAverageDataset = (label, period, color) => ({
+        label,
+        data: prices.map((_, index) => {
+            if (index < period - 1) return null;
+            const window = prices.slice(index - period + 1, index + 1).map(Number);
+            return window.every(Number.isFinite)
+                ? window.reduce((sum, value) => sum + value, 0) / period
+                : null;
+        }),
+        borderColor: color,
+        borderWidth: 1.8,
+        pointRadius: 0,
+        spanGaps: false,
+        fill: false
+    });
+
     const datasets = [{
         label: '收盤價',
         data: prices,
@@ -172,8 +189,8 @@ function renderTrendChart(stock) {
         fill: false
     }];
 
-    if (trend.ma20 !== null) datasets.push(makeDataset('20日均線', trend.ma20, '#3B82F6'));
-    if (trend.ma60 !== null) datasets.push(makeDataset('60日均線', trend.ma60, '#8B5CF6'));
+    if (len >= 20) datasets.push(makeMovingAverageDataset('20日均線', 20, '#3B82F6'));
+    if (len >= 60) datasets.push(makeMovingAverageDataset('60日均線', 60, '#8B5CF6'));
 
     if (hp > 0) datasets.push(makeDataset('前高', hp, '#EF4444', false));
     if (lp > 0) datasets.push(makeDataset('前低', lp, '#22C55E', false));
