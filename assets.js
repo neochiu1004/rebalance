@@ -470,7 +470,7 @@ function openEditModal(index) {
     const buyValue = Math.round(stock.shares * cp);
     const defaultPc = buyValue + Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
     document.getElementById('edit-paid-cost').value = stock.paidCost !== undefined ? stock.paidCost : defaultPc;
-    document.getElementById('edit-beta').value = stock.beta || 1;
+    document.getElementById('edit-beta').value = stock.beta !== undefined ? stock.beta : 1;
     
     const modal = document.getElementById('edit-modal');
     const content = document.getElementById('edit-modal-content');
@@ -506,7 +506,8 @@ function saveEditStock(e) {
     state.stocks[editingIndex].shares = parseFloat(document.getElementById('edit-shares').value);
     state.stocks[editingIndex].costPrice = parseFloat(document.getElementById('edit-cost-price').value);
     state.stocks[editingIndex].paidCost = parseFloat(document.getElementById('edit-paid-cost').value);
-    state.stocks[editingIndex].beta = parseFloat(document.getElementById('edit-beta').value) || 1;
+    const beta = parseFloat(document.getElementById('edit-beta').value);
+    state.stocks[editingIndex].beta = Number.isFinite(beta) ? beta : 1;
 
     saveState();
     updateAllData();
@@ -711,8 +712,7 @@ async function addStockSubmit(e) {
 }
 
 async function fetchLatestPrices() {
-    const allStocks = [...state.stocks, ...(state.watchStocks || [])];
-    if (!state.apiKey || allStocks.length === 0) return;
+    if (!state.apiKey || state.stocks.length === 0) return;
     
     const lastUpdateEl = document.getElementById('last-update');
     if (!lastUpdateEl) return;
@@ -723,7 +723,7 @@ async function fetchLatestPrices() {
     }
 
     let updated = false;
-    for (let stock of allStocks) {
+    for (let stock of state.stocks) {
         if (!stock.symbol) continue;
         try {
             const fetches = [
@@ -737,7 +737,12 @@ async function fetchLatestPrices() {
             const responses = await Promise.all(fetches);
             if (responses[0].ok) {
                 const quote = await responses[0].json();
-                stock.price = quote.closePrice || quote.lastPrice || stock.price;
+                const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
+                stock.price = latestPrice;
+                if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate && latestPrice > 0) {
+                    stock.costPrice = latestPrice;
+                    stock.firstPriceDate = new Date().toISOString().split('T')[0];
+                }
                 stock.changePercent = quote.changePercent || 0; 
                 updated = true;
             }

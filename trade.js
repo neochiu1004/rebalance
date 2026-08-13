@@ -75,7 +75,7 @@ function renderTradeTab() {
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">股數</label>
-                            <input type="number" id="trade-shares" min="1" step="1" oninput="calcTradePreview()" required class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                            <input type="number" id="trade-shares" min="0" step="1" oninput="calcTradePreview()" required class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
                         </div>
                     </div>
 
@@ -83,7 +83,7 @@ function renderTradeTab() {
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">成交價</label>
-                            <input type="number" id="trade-price" min="0.01" step="0.01" oninput="calcTradePreview()" required class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
+                            <input type="number" id="trade-price" min="0" step="0.01" oninput="calcTradePreview()" class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">手續費 (自動)</label>
@@ -233,7 +233,8 @@ function submitTradeForm(e) {
     const fee = parseInt(document.getElementById('trade-fee').value) || 0;
     const isBuy = tradeConfig.type === 'buy';
 
-    if (price <= 0 || shares <= 0) return;
+    if (!isNewStock && (price <= 0 || shares <= 0)) return;
+    if (isNewStock && (shares < 0 || (shares > 0 && price <= 0))) return;
 
     if (isNewStock && !isBuy) {
         if(typeof showToast === 'function') showToast('賣出交易請先選擇現有持股');
@@ -256,7 +257,7 @@ function submitTradeForm(e) {
                 price,
                 costPrice: 0,
                 paidCost: 0,
-                beta: parseFloat(document.getElementById('trade-new-beta').value) || 1,
+                beta: Number.isFinite(parseFloat(document.getElementById('trade-new-beta').value)) ? parseFloat(document.getElementById('trade-new-beta').value) : 1,
                 transactions: []
             };
         }
@@ -264,20 +265,22 @@ function submitTradeForm(e) {
         stock = state.stocks[tradeConfig.stockIndex];
     }
 
-    try {
-        applyTransaction({
-            stock,
-            type: tradeConfig.type,
-            price,
-            shares,
-            feeOverride: fee,
-            date,
-            note: '交易頁面新增',
-            syncCash: tradeConfig.syncCash
-        });
-    } catch (error) {
-        if(typeof showToast === 'function') showToast(error.message);
-        return;
+    if (shares > 0) {
+        try {
+            applyTransaction({
+                stock,
+                type: tradeConfig.type,
+                price,
+                shares,
+                feeOverride: fee,
+                date,
+                note: '交易頁面新增',
+                syncCash: tradeConfig.syncCash
+            });
+        } catch (error) {
+            if(typeof showToast === 'function') showToast(error.message);
+            return;
+        }
     }
 
     if (isNewStock && !state.stocks.includes(stock)) state.stocks.push(stock);

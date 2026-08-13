@@ -341,9 +341,8 @@ async function fetchFinmindHighLow() {
     const startDateStr = lastYear.toISOString().split('T')[0];
 
     try {
-        const allStocks = [...state.stocks, ...(state.watchStocks || [])];
-        for (let i = 0; i < allStocks.length; i++) {
-            const stock = allStocks[i];
+        for (let i = 0; i < state.stocks.length; i++) {
+            const stock = state.stocks[i];
             if (!stock.symbol) continue;
 
             const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
@@ -549,7 +548,10 @@ function renderWaterLevel() {
         points.push({ name: '前高', price: hp, type: 'high', date: s.highDate });
         if (lp > 0) points.push({ name: '前低', price: lp, type: 'low', date: s.lowDate });
         points.push({ name: '現價', price: currentPrice, type: 'current' });
-        points.push({ name: '個人均價', price: costPrice, type: 'cost' });
+        const averageDate = (Number(s.shares) || 0) === 0
+            ? s.firstPriceDate
+            : (s.transactions || []).filter(t => t.type === 'buy').map(t => t.date).sort()[0];
+        points.push({ name: '個人均價', price: costPrice, type: 'cost', date: averageDate });
         
         const range = hp - lp;
         if (lp > 0 && range > 0) {
@@ -576,7 +578,7 @@ function renderWaterLevel() {
                 const diffTime = Math.max(0, now - pDate);
                 const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                 const daysAgoStr = diffDays === 0 ? "今天" : `${diffDays} 天前`;
-                dateStr = `<span class="text-slate-400 text-xs ml-2 hidden sm:inline font-sans">(${p.date}, ${daysAgoStr})</span>`;
+                dateStr = `<span class="text-slate-400 text-xs ml-2 font-sans">(${p.date}, ${daysAgoStr})</span>`;
             }
 
             if (p.type === 'current') {
