@@ -711,7 +711,8 @@ async function addStockSubmit(e) {
 }
 
 async function fetchLatestPrices() {
-    if (!state.apiKey || state.stocks.length === 0) return;
+    const allStocks = [...state.stocks, ...(state.watchStocks || [])];
+    if (!state.apiKey || allStocks.length === 0) return;
     
     const lastUpdateEl = document.getElementById('last-update');
     if (!lastUpdateEl) return;
@@ -722,7 +723,7 @@ async function fetchLatestPrices() {
     }
 
     let updated = false;
-    for (let stock of state.stocks) {
+    for (let stock of allStocks) {
         if (!stock.symbol) continue;
         try {
             const fetches = [

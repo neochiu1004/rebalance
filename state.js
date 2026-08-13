@@ -31,6 +31,7 @@ const state = {
     deviation: Number.isFinite(parseFloat(localStorage.getItem('mce_deviation'))) ? parseFloat(localStorage.getItem('mce_deviation')) : 5,
     cashFlowFirst: localStorage.getItem('mce_cash_flow_first') !== 'false',
     stocks: Array.isArray(storedStocks) ? storedStocks : [],
+    watchStocks: readStoredJson('mce_watch_stocks', []),
     apiKey: localStorage.getItem('mce_apikey') || '',
     geminiApiKey: localStorage.getItem('mce_gemini_apikey') || '',
     finmindToken: localStorage.getItem('mce_finmind_token') || '',
@@ -47,6 +48,7 @@ function saveState() {
     localStorage.setItem('mce_gemini_apikey', state.geminiApiKey);
     localStorage.setItem('mce_finmind_token', state.finmindToken);
     localStorage.setItem('mce_stocks', JSON.stringify(state.stocks));
+    localStorage.setItem('mce_watch_stocks', JSON.stringify(state.watchStocks));
 }
 
 // 輔助函式：判斷是否為 ETF 或槓桿型 (預設自動納入均分)

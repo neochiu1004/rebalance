@@ -341,8 +341,9 @@ async function fetchFinmindHighLow() {
     const startDateStr = lastYear.toISOString().split('T')[0];
 
     try {
-        for (let i = 0; i < state.stocks.length; i++) {
-            const stock = state.stocks[i];
+        const allStocks = [...state.stocks, ...(state.watchStocks || [])];
+        for (let i = 0; i < allStocks.length; i++) {
+            const stock = allStocks[i];
             if (!stock.symbol) continue;
 
             const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
