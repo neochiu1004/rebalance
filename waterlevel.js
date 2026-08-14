@@ -6,6 +6,34 @@
 let editingHpIndex = -1;
 let trendChartInstance = null;
 let waterLevelTrendChartInstance = null;
+let trendRange = '1Y';
+let trendChartStock = null;
+
+function setTrendRange(range) {
+    trendRange = range;
+    updateTrendRangeButtons();
+    if (trendChartStock) renderTrendChart(trendChartStock);
+}
+
+function updateTrendRangeButtons() {
+    document.querySelectorAll('[data-trend-range]').forEach(button => {
+        const active = button.dataset.trendRange === trendRange;
+        button.classList.toggle('bg-slate-300', active);
+        button.classList.toggle('bg-slate-100', !active);
+        button.classList.toggle('text-slate-900', active);
+        button.classList.toggle('text-slate-700', !active);
+    });
+}
+
+function getTrendHistory(stock) {
+    const history = Array.isArray(stock.historyData) ? stock.historyData : [];
+    if (trendRange === '1Y' || history.length === 0) return history;
+    const days = { '1M': 31, '3M': 93, '6M': 186 }[trendRange] || 365;
+    const lastDate = new Date(history[history.length - 1].d);
+    const startDate = new Date(lastDate);
+    startDate.setDate(startDate.getDate() - days);
+    return history.filter(item => new Date(item.d) >= startDate);
+}
 
 // 開啟設定高低點 Modal
 function openHighPointModal(index) {
@@ -79,6 +107,8 @@ function saveHighPoint(e) {
 function openTrendModal(index) {
     const stock = state.stocks[index];
     if (!stock) return;
+    trendChartStock = stock;
+    trendRange = '1Y';
 
     const modal = document.getElementById('trend-modal');
     const content = document.getElementById('trend-modal-content');
@@ -105,6 +135,7 @@ function openTrendModal(index) {
     }
 
     if (noDataEl) noDataEl.classList.add('hidden');
+    updateTrendRangeButtons();
     renderTrendChart(stock);
 }
 
@@ -143,14 +174,19 @@ function renderTrendChart(stock) {
 
     destroyTrendCharts();
 
-    const labels = stock.historyData.map(h => h.d);
-    const prices = stock.historyData.map(h => h.c);
+    const historyData = getTrendHistory(stock);
+    const labels = historyData.map(h => h.d);
+    const prices = historyData.map(h => h.c);
     const len = prices.length;
 
     const hp = parseFloat(stock.highPrice) || 0;
     const lp = parseFloat(stock.lowPrice) || 0;
     const range = hp - lp;
-    const trend = calculateTrendSignal(stock.historyData);
+    const trend = calculateTrendSignal(historyData);
+    const rangeStart = labels[0] || '';
+    const rangeEnd = labels[labels.length - 1] || '';
+    const rangeEl = document.getElementById('trend-date-range');
+    if (rangeEl) rangeEl.textContent = rangeStart && rangeEnd ? `${rangeStart.slice(5)} - ${rangeEnd.slice(5)}` : '';
 
     // 建立平行水平線常數陣列
     const makeDataset = (label, val, color, isDashed = true) => ({
@@ -258,6 +294,41 @@ function renderTrendChart(stock) {
         fill: false
     });
 
+    const waterLevelBackgroundPlugin = {
+        id: 'waterLevelBackground',
+        beforeDraw(chart) {
+            const { ctx: chartCtx, chartArea, scales } = chart;
+            if (!chartArea || !scales.y) return;
+            const y0 = scales.y.getPixelForValue(0);
+            const y10 = scales.y.getPixelForValue(-10);
+            const y20 = scales.y.getPixelForValue(-20);
+            const y30 = scales.y.getPixelForValue(-30);
+            chartCtx.save();
+            chartCtx.fillStyle = '#E3EEE5';
+            chartCtx.fillRect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, y10 - chartArea.top);
+            chartCtx.fillStyle = '#F1E8CB';
+            chartCtx.fillRect(chartArea.left, y10, chartArea.right - chartArea.left, y20 - y10);
+            chartCtx.fillStyle = '#EFD6D6';
+            chartCtx.fillRect(chartArea.left, y20, chartArea.right - chartArea.left, y30 - y20);
+
+            chartCtx.font = '12px sans-serif';
+            chartCtx.fillStyle = '#0F172A';
+            chartCtx.fillText('0%', chartArea.left + 10, y0 + 4);
+            chartCtx.fillText('-10%', chartArea.left + 10, y10 + 4);
+            chartCtx.fillText('-20%', chartArea.left + 10, y20 + 4);
+            chartCtx.fillStyle = '#64748B';
+            chartCtx.fillText('正常', chartArea.left + 10, y0 + 38);
+            chartCtx.fillText('觀察', chartArea.left + 10, y10 + 58);
+            chartCtx.fillText('股災', chartArea.left + 10, y20 + 58);
+            chartCtx.textAlign = 'right';
+            chartCtx.fillStyle = '#0F172A';
+            chartCtx.fillText(fmtPrice(hp), chartArea.right - 8, y0 + 4);
+            chartCtx.fillText(fmtPrice(hp * 0.9), chartArea.right - 8, y10 + 4);
+            chartCtx.fillText(fmtPrice(hp * 0.8), chartArea.right - 8, y20 + 4);
+            chartCtx.restore();
+        }
+    };
+
     waterLevelTrendChartInstance = new Chart(waterCtx, {
         type: 'line',
         data: {
@@ -269,7 +340,10 @@ function renderTrendChart(stock) {
                     borderColor: '#F97316',
                     backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     borderWidth: 2,
-                    pointRadius: 0,
+                    pointRadius: context => context.dataIndex === len - 1 ? 5 : 0,
+                    pointBackgroundColor: '#7C8781',
+                    pointBorderColor: '#FFFFFF',
+                    pointBorderWidth: 2,
                     fill: true,
                     tension: 0.18,
                     spanGaps: true
@@ -285,11 +359,7 @@ function renderTrendChart(stock) {
             animation: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                    labels: { boxWidth: 10, font: { size: 9 }, filter: item => item.datasetIndex === 0 || item.datasetIndex > 1 }
-                },
+                legend: { display: false },
                 tooltip: {
                     callbacks: {
                         label: context => `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
@@ -304,11 +374,12 @@ function renderTrendChart(stock) {
                 y: {
                     suggestedMin: -30,
                     suggestedMax: 0,
-                    grid: { color: '#F1F5F9' },
-                    ticks: { font: { size: 10 }, callback: value => `${value}%` }
+                    grid: { display: false },
+                    ticks: { display: false }
                 }
             }
-        }
+        },
+        plugins: [waterLevelBackgroundPlugin]
     });
 }
 

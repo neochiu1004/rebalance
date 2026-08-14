@@ -154,10 +154,22 @@
             </div>
             <div class="flex items-center justify-between mb-1">
                 <div class="text-[11px] font-bold text-slate-500">市場水位（距期間高點）</div>
-                <div id="trend-water-summary" class="text-[11px] font-black text-slate-500"></div>
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] text-slate-500 mr-1">Zoom</span>
+                    <button type="button" data-trend-range="1M" onclick="setTrendRange('1M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">1M</button>
+                    <button type="button" data-trend-range="3M" onclick="setTrendRange('3M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">3M</button>
+                    <button type="button" data-trend-range="6M" onclick="setTrendRange('6M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">6M</button>
+                    <button type="button" data-trend-range="1Y" onclick="setTrendRange('1Y')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-300 text-slate-900">1Y</button>
+                </div>
             </div>
-            <div class="relative w-full h-44 sm:h-52">
+            <div class="flex justify-end text-[10px] text-slate-500 mb-1" id="trend-date-range"></div>
+            <div class="relative w-full h-52 sm:h-60">
                 <canvas id="waterLevelTrendChart"></canvas>
+            </div>
+            <div class="flex justify-center gap-4 text-[10px] text-slate-500 mt-2">
+                <span><i class="inline-block w-5 h-3 rounded-sm bg-emerald-100 align-middle mr-1"></i>正常區間（-10% 以內）</span>
+                <span><i class="inline-block w-5 h-3 rounded-sm bg-amber-100 align-middle mr-1"></i>觀察區間（-10%～-20%）</span>
+                <span><i class="inline-block w-5 h-3 rounded-sm bg-rose-100 align-middle mr-1"></i>股災區間（-20% 以上）</span>
             </div>
             <div id="trend-no-data-msg" class="hidden absolute inset-0 flex items-center justify-center bg-white/95 rounded-2xl text-center p-6 text-sm font-semibold text-slate-400">
                 尚無歷史資料，請先點擊「抓取 1 年高低」載入報價。
