@@ -290,16 +290,21 @@ function renderRebalanceResult(metrics) {
         }
         
         totalStockDiff += diffStock;
-        if (diffStock >= 0) totalBuyNeed += diffStock;
-        else totalSellValue += Math.abs(diffStock);
-        const suggestShares = currentPrice > 0 ? Math.abs(diffStock) / currentPrice : 0;
-        
         const isBuy = diffStock >= 0;
+        // 再平衡建議以整股計算，並用同一套交易成本規則估算實際金額。
+        const suggestShares = currentPrice > 0 ? Math.round(Math.abs(diffStock) / currentPrice) : 0;
+        const suggestedTrade = currentPrice > 0 && suggestShares > 0
+            ? calculateTradingCost({ type: isBuy ? 'buy' : 'sell', price: currentPrice, shares: suggestShares, stock: s })
+            : { amount: 0, fee: 0, tax: 0, netAmount: 0 };
+        if (isBuy) totalBuyNeed += suggestedTrade.netAmount;
+        else totalSellValue += suggestedTrade.netAmount;
         const actionType = isBuy ? '買入' : '賣出';
-        const actionColorClass = isBuy ? 'text-slate-900 font-black' : 'text-[#EF4444] font-black'; 
+        const actionColorClass = isBuy ? 'text-slate-900 font-black' : 'text-[#EF4444] font-black';
         const nameDisplay = escapeHtml(formatStockName(s));
-        const actionDetail = `<div class="text-sm ${actionColorClass}">${actionType} NT$ ${fmt(Math.abs(diffStock))}</div>
-               <div class="text-[11px] text-slate-400 font-medium">(約 ${fmt(suggestShares)} 股)</div>`;
+        const actionDetail = `<div class="text-sm ${actionColorClass}">${actionType} ${fmt(suggestShares)} 股</div>
+               <div class="text-[11px] text-slate-500 font-medium">計算股價 NT$${fmtPrice(currentPrice)}</div>
+               <div class="text-[11px] text-slate-500 font-medium">${isBuy ? '買進總成本' : '賣出實收'} NT$${fmt(suggestedTrade.netAmount)}</div>
+               <div class="text-[10px] text-slate-400">成交 NT$${fmt(suggestedTrade.amount)} · 手續費 NT$${fmt(suggestedTrade.fee)}${suggestedTrade.tax > 0 ? ` · 稅 NT$${fmt(suggestedTrade.tax)}` : ''}</div>`;
 
         subItemsHTML += `
         <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 px-1">

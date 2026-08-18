@@ -11,11 +11,18 @@ function isETF(symbol = '', name = '') {
         normalizedSymbol.endsWith('D');
 }
 
+function calculateBrokerageFee(amount) {
+    const tradeAmount = Number(amount) || 0;
+    if (tradeAmount <= 0) return 0;
+    // 0.1425% × 28 折後，最後以元為單位四捨五入，最低 1 元。
+    return Math.max(1, Math.round(tradeAmount * 0.001425 * 0.28));
+}
+
 function calculateTradingCost({ type, price, shares, stock = {}, feeOverride = null }) {
     const amount = Number(price) * Number(shares);
     if (!Number.isFinite(amount) || amount < 0) throw new Error('交易金額無效');
 
-    const automaticFee = amount > 0 ? Math.max(1, Math.round(amount * 0.001425 * 0.28)) : 0;
+    const automaticFee = calculateBrokerageFee(amount);
     const fee = feeOverride === null || feeOverride === undefined
         ? automaticFee
         : Math.max(0, Math.round(Number(feeOverride) || 0));
@@ -34,7 +41,7 @@ function calculateAllInCost(stock = {}, currentPrice = null) {
     const buyPrice = Number(stock.costPrice) || Number(stock.price) || 0;
     const buyAmount = shares * buyPrice;
     const fallbackBuyCost = buyAmount > 0
-        ? buyAmount + Math.max(1, Math.round(buyAmount * 0.001425 * 0.28))
+        ? buyAmount + calculateBrokerageFee(buyAmount)
         : 0;
     const buyCost = Number.isFinite(Number(stock.paidCost))
         ? Number(stock.paidCost)

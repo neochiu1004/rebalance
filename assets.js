@@ -564,7 +564,7 @@ function executeMergeOrAdd(newStock) {
         let oldPaidCost = existing.paidCost;
         if (oldPaidCost === undefined) {
             const oldBuyVal = Math.round(oldShares * (Number(existing.costPrice) || Number(existing.price) || 0));
-            oldPaidCost = oldBuyVal + Math.max(1, Math.round(oldBuyVal * 0.001425 * 0.28));
+            oldPaidCost = oldBuyVal + calculateBrokerageFee(oldBuyVal);
         }
 
         const addedPaidCost = Number(newStock.paidCost) || 0;
@@ -645,7 +645,7 @@ async function addStockSubmit(e) {
     }
 
     const buyValue = Math.round(shares * costPrice);
-    const buyFee = Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
+    const buyFee = calculateBrokerageFee(buyValue);
     const paidCost = buyValue + buyFee;
 
     const newStock = { 
@@ -852,7 +852,7 @@ function handleCSVUpload(e) {
             
             if (isNaN(paidCost)) {
                 const buyValue = Math.round(shares * costPrice);
-                const buyFee = Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
+                const buyFee = calculateBrokerageFee(buyValue);
                 paidCost = buyValue + buyFee;
             }
 
@@ -886,7 +886,7 @@ function handleCSVUpload(e) {
                     let oldPaidCost = existing.paidCost;
                     if (oldPaidCost === undefined) {
                         const oldBuyVal = Math.round(oldShares * (existing.costPrice || existing.price));
-                        oldPaidCost = oldBuyVal + Math.max(1, Math.round(oldBuyVal * 0.001425 * 0.28));
+                        oldPaidCost = oldBuyVal + calculateBrokerageFee(oldBuyVal);
                     }
                     existing.paidCost = oldPaidCost + paidCost;
                     
