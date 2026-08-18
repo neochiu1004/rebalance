@@ -53,6 +53,123 @@ function calculateTransactionBreakdown(stock = {}) {
     return breakdown;
 }
 
+function getTransactionType(transaction) {
+    return transaction.type === 'buy' || transaction.type === '買進' ? 'buy' : 'sell';
+}
+
+// 依日期回推當日持股與現金，讓買賣不被誤算成單日績效。
+function calculateDailyPortfolioHistory() {
+    const stocksWithHistory = (state.stocks || []).filter(stock =>
+        Array.isArray(stock.historyData) && stock.historyData.length > 0
+    );
+    const dateSet = new Set();
+    stocksWithHistory.forEach(stock => stock.historyData.forEach(item => {
+        if (item.d) dateSet.add(String(item.d));
+    }));
+    const dates = [...dateSet].sort();
+    if (dates.length === 0) return [];
+
+    const priceOnDate = (stock, date) => {
+        let latest = null;
+        stock.historyData.forEach(item => {
+            if (String(item.d) <= date && Number.isFinite(Number(item.c))) latest = Number(item.c);
+        });
+        return latest;
+    };
+
+    const transactionsAfter = (stock, date) => (Array.isArray(stock.transactions) ? stock.transactions : [])
+        .filter(transaction => String(transaction.date || '') > date);
+
+    const rows = dates.map(date => {
+        let stockValue = 0;
+        stocksWithHistory.forEach(stock => {
+            const futureTransactions = transactionsAfter(stock, date);
+            const futureBuys = futureTransactions
+                .filter(transaction => getTransactionType(transaction) === 'buy')
+                .reduce((sum, transaction) => sum + (Number(transaction.shares) || 0), 0);
+            const futureSells = futureTransactions
+                .filter(transaction => getTransactionType(transaction) === 'sell')
+                .reduce((sum, transaction) => sum + (Number(transaction.shares) || 0), 0);
+            const shares = Math.max(0, (Number(stock.shares) || 0) - futureBuys + futureSells);
+            const price = priceOnDate(stock, date);
+            if (price !== null && shares > 0) stockValue += shares * price;
+        });
+
+        const futureCashAdjustment = (state.stocks || []).flatMap(stock =>
+            Array.isArray(stock.transactions) ? stock.transactions : []
+        ).filter(transaction => String(transaction.date || '') > date)
+            .reduce((sum, transaction) => {
+                const transactionType = getTransactionType(transaction);
+                const netAmount = Number.isFinite(Number(transaction.netAmount))
+                    ? Number(transaction.netAmount)
+                    : calculateTradingCost({
+                        type: transactionType,
+                        price: Number(transaction.price) || 0,
+                        shares: Number(transaction.shares) || 0,
+                        stock
+                    }).netAmount;
+                return sum + (transactionType === 'buy' ? netAmount : -netAmount);
+            }, 0);
+        const cashValue = (Number(state.cash) || 0) + futureCashAdjustment;
+        return { date, stockValue, cashValue, totalValue: stockValue + cashValue };
+    });
+
+    let previousTotal = null;
+    let cumulativePnl = 0;
+    rows.forEach(row => {
+        row.dailyPnl = previousTotal === null ? 0 : row.totalValue - previousTotal;
+        row.dailyReturn = previousTotal > 0 ? (row.dailyPnl / previousTotal) * 100 : 0;
+        cumulativePnl += row.dailyPnl;
+        row.cumulativePnl = cumulativePnl;
+        previousTotal = row.totalValue;
+    });
+    return rows;
+}
+
+function renderDailyPerformanceTable() {
+    const container = document.getElementById('daily-performance-container');
+    if (!container) return;
+    const rows = calculateDailyPortfolioHistory();
+    if (rows.length === 0) {
+        container.innerHTML = '<div class="glass-card p-6 text-center text-xs font-semibold text-slate-400 border-dashed">尚無歷史價格資料，請先至市場水位抓取歷史高低點。</div>';
+        return;
+    }
+
+    const displayRows = rows.slice(-60).reverse();
+    const color = value => value >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+    container.innerHTML = `
+        <div class="glass-card overflow-hidden">
+            <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
+                <table class="w-full min-w-[680px] text-[11px]">
+                    <thead class="sticky top-0 bg-slate-100/95 text-slate-500 font-black z-10">
+                        <tr>
+                            <th class="px-3 py-2.5 text-left">日期</th>
+                            <th class="px-3 py-2.5 text-right">總資產</th>
+                            <th class="px-3 py-2.5 text-right">股票市值</th>
+                            <th class="px-3 py-2.5 text-right">現金</th>
+                            <th class="px-3 py-2.5 text-right">每日盈虧</th>
+                            <th class="px-3 py-2.5 text-right">報酬率</th>
+                            <th class="px-3 py-2.5 text-right">累計盈虧</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${displayRows.map(row => `
+                            <tr class="bg-white hover:bg-slate-50">
+                                <td class="px-3 py-2.5 font-bold text-slate-700">${escapeHtml(row.date)}</td>
+                                <td class="px-3 py-2.5 text-right font-black text-slate-800">NT$${fmt(row.totalValue)}</td>
+                                <td class="px-3 py-2.5 text-right text-slate-600">NT$${fmt(row.stockValue)}</td>
+                                <td class="px-3 py-2.5 text-right text-slate-600">NT$${fmt(row.cashValue)}</td>
+                                <td class="px-3 py-2.5 text-right font-bold ${color(row.dailyPnl)}">${row.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(row.dailyPnl))}</td>
+                                <td class="px-3 py-2.5 text-right font-bold ${color(row.dailyReturn)}">${row.dailyReturn >= 0 ? '+' : ''}${row.dailyReturn.toFixed(2)}%</td>
+                                <td class="px-3 py-2.5 text-right font-bold ${color(row.cumulativePnl)}">${row.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(row.cumulativePnl))}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
 // ==========================================
 // 核心數據引擎 (修復 NaN 錯誤的關鍵)
 // ==========================================
@@ -266,6 +383,7 @@ function updateAllData() {
     if (typeof renderRebalanceResult === 'function') renderRebalanceResult(metrics);
     if (typeof syncWeightUI === 'function') syncWeightUI();
     if (typeof renderWaterLevel === 'function') renderWaterLevel();
+    renderDailyPerformanceTable();
 }
 
 // ==========================================
