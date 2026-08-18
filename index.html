@@ -383,6 +383,17 @@
                 </div>
 
                 <div class="mt-8">
+                    <div id="daily-pnl-section" class="glass-card p-4 mb-6 hidden">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <h2 class="text-xl font-black text-slate-900">盈虧趨勢</h2>
+                                <p id="daily-pnl-source" class="text-[10px] font-semibold text-slate-400 mt-1"></p>
+                            </div>
+                            <div id="daily-pnl-summary" class="flex gap-5"></div>
+                        </div>
+                        <div class="relative h-56"><canvas id="daily-pnl-chart"></canvas></div>
+                    </div>
+
                     <div class="flex justify-between items-end mb-3 px-1">
                         <div>
                             <h2 class="text-xl font-black text-slate-900">每日績效統計</h2>

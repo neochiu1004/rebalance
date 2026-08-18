@@ -14,8 +14,8 @@ function isETF(symbol = '', name = '') {
 function calculateBrokerageFee(amount) {
     const tradeAmount = Number(amount) || 0;
     if (tradeAmount <= 0) return 0;
-    // 0.1425% × 28 折後，最後以元為單位四捨五入，最低 1 元。
-    return Math.max(1, Math.round(tradeAmount * 0.001425 * 0.28));
+    // 0.1425% × 28 折後，最後以元為單位無條件捨去，最低 1 元。
+    return Math.max(1, Math.floor(tradeAmount * 0.001425 * 0.28));
 }
 
 function calculateTradingCost({ type, price, shares, stock = {}, feeOverride = null }) {

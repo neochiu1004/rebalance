@@ -4,6 +4,7 @@
 // ==========================================
 
 let assetChart = null;
+let dailyPnlChart = null;
 
 // --- 全域格式化常數 ---
 const fmt = (num) => new Intl.NumberFormat('en-US').format(Math.round(num));
@@ -58,59 +59,70 @@ function getTransactionType(transaction) {
 }
 
 // 依日期回推當日持股與現金，讓買賣不被誤算成單日績效。
+// 價格、交易皆預先排序，避免每次渲染重複掃描整份資料。
 function calculateDailyPortfolioHistory() {
     const stocksWithHistory = (state.stocks || []).filter(stock =>
         Array.isArray(stock.historyData) && stock.historyData.length > 0
-    );
+    ).map(stock => ({
+        stock,
+        prices: stock.historyData
+            .filter(item => item.d && Number.isFinite(Number(item.c)))
+            .map(item => ({ date: String(item.d), close: Number(item.c) }))
+            .sort((a, b) => a.date.localeCompare(b.date)),
+        transactions: (Array.isArray(stock.transactions) ? stock.transactions : [])
+            .filter(transaction => transaction.date)
+            .map(transaction => ({ ...transaction, date: String(transaction.date) }))
+            .sort((a, b) => a.date.localeCompare(b.date))
+    })).filter(series => series.prices.length > 0);
     const dateSet = new Set();
-    stocksWithHistory.forEach(stock => stock.historyData.forEach(item => {
-        if (item.d) dateSet.add(String(item.d));
-    }));
+    stocksWithHistory.forEach(series => series.prices.forEach(item => dateSet.add(item.date)));
     const dates = [...dateSet].sort();
     if (dates.length === 0) return [];
 
-    const priceOnDate = (stock, date) => {
-        let latest = null;
-        stock.historyData.forEach(item => {
-            if (String(item.d) <= date && Number.isFinite(Number(item.c))) latest = Number(item.c);
+    const initialDate = dates[0];
+    const cashEventsByDate = new Map();
+    const seriesState = stocksWithHistory.map(series => {
+        const futureTransactions = series.transactions.filter(transaction => transaction.date > initialDate);
+        const startingShares = futureTransactions.reduce((shares, transaction) =>
+            shares + (getTransactionType(transaction) === 'buy' ? -(Number(transaction.shares) || 0) : (Number(transaction.shares) || 0)),
+            Number(series.stock.shares) || 0
+        );
+        futureTransactions.forEach(transaction => {
+            const type = getTransactionType(transaction);
+            const netAmount = Number.isFinite(Number(transaction.netAmount))
+                ? Number(transaction.netAmount)
+                : calculateTradingCost({
+                    type,
+                    price: Number(transaction.price) || 0,
+                    shares: Number(transaction.shares) || 0,
+                    stock: series.stock
+                }).netAmount;
+            cashEventsByDate.set(transaction.date, (cashEventsByDate.get(transaction.date) || 0) + (type === 'buy' ? -netAmount : netAmount));
         });
-        return latest;
-    };
+        return { ...series, shares: Math.max(0, startingShares), priceIndex: 0, currentPrice: null };
+    });
 
-    const transactionsAfter = (stock, date) => (Array.isArray(stock.transactions) ? stock.transactions : [])
-        .filter(transaction => String(transaction.date || '') > date);
-
-    const rows = dates.map(date => {
+    const startingCash = (Number(state.cash) || 0) - [...cashEventsByDate.values()].reduce((sum, value) => sum + value, 0);
+    let cashValue = startingCash;
+    const rows = dates.map((date, index) => {
+        if (index > 0) {
+            cashValue += cashEventsByDate.get(date) || 0;
+            seriesState.forEach(series => series.transactions
+                .filter(transaction => transaction.date === date)
+                .forEach(transaction => {
+                    series.shares += getTransactionType(transaction) === 'buy'
+                        ? Number(transaction.shares) || 0
+                        : -(Number(transaction.shares) || 0);
+                }));
+        }
         let stockValue = 0;
-        stocksWithHistory.forEach(stock => {
-            const futureTransactions = transactionsAfter(stock, date);
-            const futureBuys = futureTransactions
-                .filter(transaction => getTransactionType(transaction) === 'buy')
-                .reduce((sum, transaction) => sum + (Number(transaction.shares) || 0), 0);
-            const futureSells = futureTransactions
-                .filter(transaction => getTransactionType(transaction) === 'sell')
-                .reduce((sum, transaction) => sum + (Number(transaction.shares) || 0), 0);
-            const shares = Math.max(0, (Number(stock.shares) || 0) - futureBuys + futureSells);
-            const price = priceOnDate(stock, date);
-            if (price !== null && shares > 0) stockValue += shares * price;
+        seriesState.forEach(series => {
+            while (series.priceIndex < series.prices.length && series.prices[series.priceIndex].date <= date) {
+                series.currentPrice = series.prices[series.priceIndex].close;
+                series.priceIndex += 1;
+            }
+            if (series.currentPrice !== null && series.shares > 0) stockValue += series.shares * series.currentPrice;
         });
-
-        const futureCashAdjustment = (state.stocks || []).flatMap(stock =>
-            Array.isArray(stock.transactions) ? stock.transactions : []
-        ).filter(transaction => String(transaction.date || '') > date)
-            .reduce((sum, transaction) => {
-                const transactionType = getTransactionType(transaction);
-                const netAmount = Number.isFinite(Number(transaction.netAmount))
-                    ? Number(transaction.netAmount)
-                    : calculateTradingCost({
-                        type: transactionType,
-                        price: Number(transaction.price) || 0,
-                        shares: Number(transaction.shares) || 0,
-                        stock
-                    }).netAmount;
-                return sum + (transactionType === 'buy' ? netAmount : -netAmount);
-            }, 0);
-        const cashValue = (Number(state.cash) || 0) + futureCashAdjustment;
         return { date, stockValue, cashValue, totalValue: stockValue + cashValue };
     });
 
@@ -126,10 +138,79 @@ function calculateDailyPortfolioHistory() {
     return rows;
 }
 
+function renderDailyPnlChart(rows) {
+    const section = document.getElementById('daily-pnl-section');
+    const summary = document.getElementById('daily-pnl-summary');
+    const canvas = document.getElementById('daily-pnl-chart');
+    if (!section || !summary || !canvas) return;
+    if (dailyPnlChart) {
+        dailyPnlChart.destroy();
+        dailyPnlChart = null;
+    }
+    if (rows.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+    const displayRows = rows.slice(-60);
+    const latest = displayRows[displayRows.length - 1];
+    const pnlClass = latest.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+    const cumulativeClass = latest.cumulativePnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+    summary.innerHTML = `
+        <div><div class="text-[10px] font-bold text-slate-400">最新每日盈虧</div><div class="text-lg font-black ${pnlClass}">${latest.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.dailyPnl))}</div></div>
+        <div class="text-right"><div class="text-[10px] font-bold text-slate-400">累計盈虧</div><div class="text-lg font-black ${cumulativeClass}">${latest.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.cumulativePnl))}</div></div>`;
+
+    dailyPnlChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: displayRows.map(row => row.date.slice(5)),
+            datasets: [
+                {
+                    label: '每日盈虧',
+                    data: displayRows.map(row => row.dailyPnl),
+                    borderColor: '#0F172A',
+                    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+                    borderWidth: 1.8,
+                    pointRadius: 0,
+                    tension: 0.25,
+                    fill: true
+                },
+                {
+                    label: '累計盈虧',
+                    data: displayRows.map(row => row.cumulativePnl),
+                    borderColor: '#2563EB',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.25,
+                    yAxisID: 'cumulative'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { boxWidth: 10, font: { size: 10 } } },
+                tooltip: { callbacks: { label: context => `${context.dataset.label}: NT$${fmt(context.parsed.y)}` } }
+            },
+            scales: {
+                x: { ticks: { maxTicksLimit: 6, font: { size: 9 } }, grid: { display: false } },
+                y: { ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } },
+                cumulative: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } }
+            }
+        }
+    });
+    const source = document.getElementById('daily-pnl-source');
+    if (source) source.textContent = `資料截至 ${latest.date}（每日手動更新資料最後一筆）`;
+}
+
 function renderDailyPerformanceTable() {
     const container = document.getElementById('daily-performance-container');
     if (!container) return;
     const rows = calculateDailyPortfolioHistory();
+    renderDailyPnlChart(rows);
     if (rows.length === 0) {
         container.innerHTML = '<div class="glass-card p-6 text-center text-xs font-semibold text-slate-400 border-dashed">尚無歷史價格資料，請先至市場水位抓取歷史高低點。</div>';
         return;
@@ -586,7 +667,7 @@ function openEditModal(index) {
     document.getElementById('edit-cost-price').value = cp;
     
     const buyValue = Math.round(stock.shares * cp);
-    const defaultPc = buyValue + Math.max(1, Math.round(buyValue * 0.001425 * 0.28));
+    const defaultPc = buyValue + calculateBrokerageFee(buyValue);
     document.getElementById('edit-paid-cost').value = stock.paidCost !== undefined ? stock.paidCost : defaultPc;
     document.getElementById('edit-beta').value = stock.beta !== undefined ? stock.beta : 1;
     
