@@ -15,15 +15,15 @@
 
     <style>
         ::-webkit-scrollbar { display: none; }
-        body { -ms-overflow-style: none; scrollbar-width: none; background-color: #F8FAFC; user-select: none; -webkit-user-select: none; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { -ms-overflow-style: none; scrollbar-width: none; background: radial-gradient(circle at 50% -10%, #EEF4FF 0, #F8FAFC 38%, #F8FAFC 100%); user-select: none; -webkit-user-select: none; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; }
         .tab-active { color: #0F172A; font-weight: 700; }
         .tab-inactive { color: #94A3B8; font-weight: 500; }
         input[type=range] { accent-color: #0F172A; }
         .glass-card {
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            border: 1px solid rgba(241, 245, 249, 1);
+            background: rgba(255, 255, 255, 0.94);
+            border-radius: 20px;
+            box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.28), 0 2px 8px rgba(15, 23, 42, 0.04);
+            border: 1px solid rgba(226, 232, 240, 0.9);
         }
         .price-badge-gray { background-color: #F8FAFC; border: 1px solid #F1F5F9; }
         .price-badge-blue { background-color: #F0F9FF; border: 1px solid #E0F2FE; }
@@ -31,6 +31,86 @@
         .toggle-checkbox:checked { right: 0; border-color: #68D391; }
         .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
         .toggle-checkbox:checked + .toggle-label:before { transform: translateX(100%); }
+        #app-content { max-width: 36rem; }
+        [class~="text-xs"] { font-size: 0.8125rem !important; line-height: 1.2rem !important; }
+        [class~="text-[10px]"] { font-size: 0.75rem !important; line-height: 1.1rem !important; }
+        [class~="text-[11px]"] { font-size: 0.8125rem !important; line-height: 1.2rem !important; }
+        nav { box-shadow: 0 -8px 24px -18px rgba(15, 23, 42, 0.45) !important; }
+        nav span { font-size: 0.75rem !important; font-weight: 650; }
+        button, input, select { font-size: 0.9375rem; }
+        button { -webkit-tap-highlight-color: transparent; }
+        .view-section h1 { letter-spacing: -0.025em; }
+        /* Visual system: midnight ink + electric lime + cool blue surfaces. */
+        :root { --ink: #101828; --muted: #667085; --line: #E4E7EC; --lime: #B8F34A; --blue: #4F7CFF; }
+        body { color: var(--ink); background: #F4F7FB; }
+        #app-content { padding-top: 1.25rem; }
+        .view-section > h1,
+        #view-rebalance > div:first-child,
+        #view-waterlevel > div:first-child {
+            background: linear-gradient(135deg, #111827 0%, #243B68 100%) !important;
+            color: #FFFFFF !important;
+            border-radius: 24px !important;
+            box-shadow: 0 18px 36px -22px rgba(16, 24, 40, 0.65);
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding: 1.25rem 1.35rem !important;
+        }
+        .view-section > h1 { text-align: left !important; margin-bottom: 1.25rem !important; }
+        .view-section > h1 + * { margin-top: 0; }
+        #view-rebalance > div:first-child h1,
+        #view-waterlevel > div:first-child h1 { color: #FFFFFF !important; }
+        #view-rebalance > div:first-child p,
+        #view-waterlevel > div:first-child span,
+        #view-assets > div:first-child #last-update { color: #B7C5E3 !important; }
+        #view-assets > div:first-child {
+            background: linear-gradient(135deg, #111827 0%, #243B68 100%) !important;
+            border-radius: 24px;
+            padding: 1.25rem 1.35rem !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            box-shadow: 0 18px 36px -22px rgba(16, 24, 40, 0.65);
+        }
+        #view-assets > div:first-child h1 { color: #FFFFFF !important; font-size: 1.05rem; }
+        #view-assets > div:nth-of-type(2) {
+            background: rgba(255, 255, 255, 0.88);
+            border: 1px solid rgba(228, 231, 236, 0.9);
+            border-radius: 24px;
+            padding: 1.25rem 1.35rem;
+            box-shadow: 0 16px 34px -24px rgba(16, 24, 40, 0.48);
+        }
+        #total-asset-value { font-size: clamp(3rem, 12vw, 4.25rem); line-height: 1; letter-spacing: -0.06em; }
+        .glass-card:hover { border-color: #C9D4E5; box-shadow: 0 18px 36px -22px rgba(16, 24, 40, 0.32), 0 3px 10px rgba(16, 24, 40, 0.05); }
+        .price-badge-gray, .price-badge-blue { border-radius: 16px; padding-top: 0.85rem; padding-bottom: 0.85rem; }
+        .price-badge-blue { background: linear-gradient(145deg, #EEF4FF, #F7FAFF); border-color: #D7E3FF; }
+        #view-assets h2, #view-rebalance h2, #view-trade h2, #view-target h2, #view-settings h2 { letter-spacing: -0.025em; }
+        #view-assets .text-xl, #view-rebalance .text-xl { letter-spacing: -0.035em; }
+        input:not([type="range"]), select {
+            min-height: 2.75rem;
+            border-color: #D0D5DD;
+            background-color: #FFFFFF;
+            border-radius: 14px;
+        }
+        input:not([type="range"]):focus, select:focus { border-color: var(--blue) !important; box-shadow: 0 0 0 4px rgba(79, 124, 255, 0.14); }
+        button { transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease, border-color 160ms ease; }
+        button:hover { transform: translateY(-1px); }
+        nav {
+            background: rgba(255, 255, 255, 0.92) !important;
+            border: 1px solid rgba(208, 213, 221, 0.8) !important;
+            border-radius: 24px 24px 0 0;
+            padding-top: 0.45rem !important;
+            box-shadow: 0 -16px 34px -24px rgba(16, 24, 40, 0.6) !important;
+        }
+        nav button { border-radius: 16px; margin: 0.15rem 0.1rem; padding-top: 0.55rem !important; padding-bottom: 0.55rem !important; }
+        nav button.tab-active { color: #FFFFFF !important; background: var(--ink); box-shadow: 0 8px 16px -10px rgba(16, 24, 40, 0.85); }
+        nav button.tab-active svg { color: var(--lime); }
+        nav button.tab-inactive:hover { color: var(--ink); background: #F2F4F7; }
+        @media (max-width: 639px) {
+            #app-content { padding-top: 0.75rem; }
+            .view-section > h1, #view-rebalance > div:first-child, #view-waterlevel > div:first-child, #view-assets > div:first-child { border-radius: 20px !important; }
+        }
+        @media (min-width: 640px) {
+            #app-content { padding-left: 1.5rem; padding-right: 1.5rem; }
+        }
     </style>
 </head>
 <body class="text-slate-900 antialiased pb-20">

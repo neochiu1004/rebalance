@@ -296,6 +296,18 @@ function renderRebalanceResult(metrics) {
         const suggestedTrade = currentPrice > 0 && suggestShares > 0
             ? calculateTradingCost({ type: isBuy ? 'buy' : 'sell', price: currentPrice, shares: suggestShares, stock: s })
             : { amount: 0, fee: 0, tax: 0, netAmount: 0 };
+        const currentAverageCost = currentPrice > 0
+            ? (calculateAllInCost(s, currentPrice).averageCost || Number(s.costPrice) || 0)
+            : 0;
+        const postAverageCost = currentPrice > 0
+            ? calculatePostRebalanceAverageCost(s, currentPrice, isBuy ? 'buy' : 'sell', suggestShares)
+            : 0;
+        const averageCostChange = formatAverageCostChange(currentAverageCost, postAverageCost);
+        const averageCostChangeClass = averageCostChange.startsWith('-')
+            ? 'text-[#22C55E]'
+            : averageCostChange.startsWith('+')
+                ? 'text-[#EF4444]'
+                : 'text-slate-500';
         if (isBuy) totalBuyNeed += suggestedTrade.netAmount;
         else totalSellValue += suggestedTrade.netAmount;
         const actionType = isBuy ? '買入' : '賣出';
@@ -305,12 +317,18 @@ function renderRebalanceResult(metrics) {
                <div class="text-[11px] text-slate-500 font-medium">計算股價 NT$${fmtPrice(currentPrice)}</div>
                <div class="text-[11px] text-slate-500 font-medium">${isBuy ? '買進總成本' : '賣出實收'} NT$${fmt(suggestedTrade.netAmount)}</div>
                <div class="text-[10px] text-slate-400">成交 NT$${fmt(suggestedTrade.amount)} · 手續費 NT$${fmt(suggestedTrade.fee)}${suggestedTrade.tax > 0 ? ` · 稅 NT$${fmt(suggestedTrade.tax)}` : ''}</div>`;
+        const averageCostDetail = currentPrice > 0 && postAverageCost > 0
+            ? `<div class="mt-1 text-[10px] font-bold ${averageCostChangeClass}">再平衡後均價 @${fmtPrice(postAverageCost)} · 與現有均價 ${averageCostChange}</div>`
+            : currentPrice > 0
+                ? '<div class="mt-1 text-[10px] text-slate-400">再平衡後均價 --（本次將清空持股）</div>'
+                : '<div class="mt-1 text-[10px] text-slate-400">無法試算再平衡後均價</div>';
 
         subItemsHTML += `
         <div class="flex justify-between items-center py-3 border-b border-slate-100 last:border-0 px-1">
             <div class="font-bold text-slate-800 text-sm truncate max-w-[55%]">${nameDisplay}</div>
             <div class="text-right shrink-0">
                 ${actionDetail}
+                ${averageCostDetail}
             </div>
         </div>`;
     });
@@ -425,4 +443,42 @@ function renderTargetStockWeights() {
     `;
     
     syncWeightUI();
+}
+
+// 以總覽相同的「含交易成本均價」口徑，試算建議交易完成後的均價。
+function calculatePostRebalanceAverageCost(stock, currentPrice, type, shares) {
+    const currentShares = Number(stock.shares) || 0;
+    const tradeShares = Number(shares) || 0;
+    const price = Number(currentPrice) || 0;
+    if (currentShares <= 0 || tradeShares <= 0 || price <= 0) {
+        return calculateAllInCost(stock, price).averageCost || Number(stock.costPrice) || 0;
+    }
+
+    const currentCost = calculateAllInCost(stock, price);
+    const buyCostPerShare = currentShares > 0 ? currentCost.buyCost / currentShares : 0;
+    const resultShares = type === 'buy'
+        ? currentShares + tradeShares
+        : Math.max(0, currentShares - tradeShares);
+    if (resultShares <= 0) return 0;
+
+    const tradeCost = calculateTradingCost({ type, price, shares: tradeShares, stock });
+    const resultBuyCost = type === 'buy'
+        ? currentCost.buyCost + tradeCost.netAmount
+        : Math.max(0, currentCost.buyCost - buyCostPerShare * tradeShares);
+    const resultStock = {
+        ...stock,
+        shares: resultShares,
+        paidCost: resultBuyCost,
+        costPrice: resultBuyCost / resultShares
+    };
+    return calculateAllInCost(resultStock, price).averageCost || 0;
+}
+
+function formatAverageCostChange(currentAverageCost, postAverageCost) {
+    if (!Number.isFinite(currentAverageCost) || currentAverageCost <= 0 || !Number.isFinite(postAverageCost) || postAverageCost <= 0) {
+        return '--';
+    }
+    const changePercent = ((postAverageCost - currentAverageCost) / currentAverageCost) * 100;
+    const sign = changePercent > 0 ? '+' : '';
+    return `${sign}${changePercent.toFixed(2)}%`;
 }
