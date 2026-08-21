@@ -403,59 +403,76 @@ function updateAllData() {
             }
             
             return `
-            <div class="glass-card p-4 transition-all hover:border-slate-300 relative overflow-hidden">
-                
-                <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
-                    <div class="flex items-center gap-2 max-w-[60%]">
-                        <span class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-md font-black shrink-0 shadow-inner">${Math.round(ratio)}%</span>
-                        <div class="font-bold text-slate-900 text-base tracking-wide truncate">${nameDisplay} <span class="text-slate-400 text-xs font-medium ml-1">${symbolDisplay} β=${s.beta || 1}</span>${isExcluded ? '<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded ml-1">不參與平衡</span>' : ''}</div>
-                    </div>
-                    <!-- 操作區：包含新增的水位快捷按鈕 -->
-                    <div class="flex items-center gap-1 shrink-0 relative z-20">
-                        <button onclick="openWaterLevelDetail(${index})" class="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors" title="查看市場水位與歷史走勢">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                            <span>水位</span>
-                        </button>
-                        <button onclick="openEditModal(${index})" class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-full transition-colors" title="編輯參數">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                        </button>
-                        <button onclick="promptRemoveStock(${index})" class="text-red-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-full transition-colors" title="刪除持股">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2 mb-4">
-                    <div class="price-badge-gray p-2 rounded-xl flex flex-col justify-center items-center text-center">
-                        <span class="text-[10px] font-bold text-slate-500 mb-0.5">當前現價</span>
-                        <span class="text-[15px] sm:text-lg font-black text-slate-900 tracking-tight">@${fmtPrice(currentPrice)}</span>
-                    </div>
-                    <div class="bg-slate-50 border border-slate-100 p-2 rounded-xl flex flex-col justify-center items-center text-center shadow-inner">
-                        <span class="text-[10px] font-bold text-slate-500 mb-0.5">本日漲跌</span>
-                        ${dailyChangeHTML}
-                    </div>
-                    <div class="price-badge-blue p-2 rounded-xl flex flex-col justify-center items-center text-center">
-                        <span class="text-[10px] font-bold text-blue-600 mb-0.5">含交易成本均價</span>
-                        <span class="text-[15px] sm:text-lg font-black text-blue-700 tracking-tight">@${fmtPrice(displayAverageCost)}</span>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 text-[12px] text-slate-500 gap-y-2">
-                    <div class="flex items-center gap-1">持有股數: <span class="font-bold text-slate-800">${fmt(s.shares)} 股</span></div>
-                    <div class="flex items-center gap-1">目前盈虧: <span class="font-bold ${pnlColorClass}">${pnlSign}NT$${fmt(Math.abs(grossPnL))} (${pnlSign}${Math.abs(grossPnLPercent).toFixed(2)}%)</span></div>
-                    <div class="flex items-center gap-1">目前市值: <span class="font-bold text-slate-800">NT$${fmt(currentValue)}</span></div>
-                    <div class="flex items-center gap-1">付出成本: <span class="font-bold text-slate-800">NT$${fmt(paidCost)}</span></div>
-                    <div class="col-span-2 mt-1 pt-2 border-t border-slate-100">
-                        <div class="text-[10px] font-black text-slate-500 mb-1.5">成本明細</div>
-                        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-400">
-                            <div>買進成交金額 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyAmount)}</span></div>
-                            <div>買進手續費 <span class="font-bold text-slate-700">NT$${fmt(transactionBreakdown.buyFee)}</span></div>
-                            <div>若以現價賣出手續費 <span class="font-bold text-slate-700">NT$${fmt(allInCost.sellFee)}</span></div>
-                            <div>若以現價賣出交易稅 <span class="font-bold text-slate-700">NT$${fmt(allInCost.sellTax)}</span></div>
+            <div class="glass-card p-4 transition-all hover:border-slate-700/60 relative overflow-hidden">
+                <!-- 原生折疊容器：點擊 summary 即可展開/收合卡片下方的詳細資訊 -->
+                <details class="group">
+                    <summary class="flex justify-between items-center cursor-pointer select-none list-none outline-none">
+                        <div class="flex items-center gap-2 max-w-[60%]">
+                            <span class="bg-slate-800 text-slate-200 text-xs px-2 py-1 rounded-md font-black shrink-0 shadow-inner">${Math.round(ratio)}%</span>
+                            <div class="font-bold text-slate-100 text-base tracking-wide truncate">
+                                ${nameDisplay} 
+                                <span class="text-slate-500 text-xs font-medium ml-1">${symbolDisplay} β=${s.beta || 1}</span>
+                                ${isExcluded ? '<span class="text-[10px] font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded ml-1">不參與平衡</span>' : ''}
+                            </div>
                         </div>
-                        <div class="mt-1 text-[10px] text-slate-400">目前持有買入成本 NT$${fmt(allInCost.buyCost)}。</div>
+                        
+                        <!-- 右側操作按鈕區 (z-20 避免觸發 summary 折疊) -->
+                        <div class="flex items-center gap-1 shrink-0 relative z-20">
+                            <button onclick="openWaterLevelDetail(${index})" class="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-400 bg-blue-950/60 border border-blue-800/40 hover:bg-blue-900/60 rounded-lg transition-colors" title="查看市場水位與歷史走勢">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                                <span>水位</span>
+                            </button>
+                            <button onclick="openEditModal(${index})" class="text-blue-400 hover:text-blue-300 hover:bg-slate-800 p-1.5 rounded-full transition-colors" title="編輯參數">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                            </button>
+                            <button onclick="promptRemoveStock(${index})" class="text-red-400 hover:text-red-300 hover:bg-slate-800 p-1.5 rounded-full transition-colors" title="刪除持股">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </summary>
+
+                    <!-- 展開內容區塊：價格卡片、持股數據與成本明細 -->
+                    <div class="pt-4 mt-3 border-t border-slate-800/80">
+                        <!-- 價格資訊三欄 -->
+                        <div class="grid grid-cols-3 gap-2 mb-4">
+                            <div class="bg-slate-800/50 border border-slate-700/50 p-2 rounded-xl flex flex-col justify-center items-center text-center">
+                                <span class="text-[10px] font-bold text-slate-400 mb-0.5">當前現價</span>
+                                <span class="text-[15px] sm:text-lg font-black text-slate-100 tracking-tight">@${fmtPrice(currentPrice)}</span>
+                            </div>
+                            <div class="bg-slate-800/50 border border-slate-700/50 p-2 rounded-xl flex flex-col justify-center items-center text-center">
+                                <span class="text-[10px] font-bold text-slate-400 mb-0.5">本日漲跌</span>
+                                ${dailyChangeHTML}
+                            </div>
+                            <div class="bg-blue-950/40 border border-blue-800/40 p-2 rounded-xl flex flex-col justify-center items-center text-center">
+                                <span class="text-[10px] font-bold text-blue-400 mb-0.5">含交易成本均價</span>
+                                <span class="text-[15px] sm:text-lg font-black text-blue-300 tracking-tight">@${fmtPrice(displayAverageCost)}</span>
+                            </div>
+                        </div>
+
+                        <!-- 基礎持股數據雙欄 -->
+                        <div class="grid grid-cols-2 text-[12px] text-slate-400 gap-y-2 mb-3">
+                            <div class="flex items-center gap-1">持有股數: <span class="font-bold text-slate-200">${fmt(s.shares)} 股</span></div>
+                            <div class="flex items-center gap-1">目前盈虧: <span class="font-bold ${pnlColorClass}">${pnlSign}NT$${fmt(Math.abs(grossPnL))} (${pnlSign}${Math.abs(grossPnLPercent).toFixed(2)}%)</span></div>
+                            <div class="flex items-center gap-1">目前市值: <span class="font-bold text-slate-200">NT$${fmt(currentValue)}</span></div>
+                            <div class="flex items-center gap-1">付出成本: <span class="font-bold text-slate-200">NT$${fmt(paidCost)}</span></div>
+                        </div>
+
+                        <!-- 內部次級折疊：成本明細 -->
+                        <details class="col-span-2 pt-2 border-t border-slate-800/80 group/sub">
+                            <summary class="text-[11px] font-bold text-slate-400 cursor-pointer flex items-center justify-between select-none list-none py-1 hover:text-slate-300">
+                                <span>成本明細</span>
+                                <svg class="w-4 h-4 text-slate-500 transition-transform group-open/sub:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </summary>
+                            <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-400 pt-2 border-t border-slate-800/50 mt-1">
+                                <div>買進成交金額 <span class="font-bold text-slate-200">NT$${fmt(transactionBreakdown.buyAmount)}</span></div>
+                                <div>買進手續費 <span class="font-bold text-slate-200">NT$${fmt(transactionBreakdown.buyFee)}</span></div>
+                                <div>若以現價賣出手續費 <span class="font-bold text-slate-200">NT$${fmt(allInCost.sellFee)}</span></div>
+                                <div>若以現價賣出交易稅 <span class="font-bold text-slate-200">NT$${fmt(allInCost.sellTax)}</span></div>
+                            </div>
+                            <div class="mt-1.5 text-[10px] text-slate-500">目前持有買入成本 NT$${fmt(allInCost.buyCost)}。</div>
+                        </details>
                     </div>
-                </div>
+                </details>
             </div>`;
         }).join('');
     }
