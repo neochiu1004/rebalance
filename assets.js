@@ -1008,6 +1008,8 @@ async function fetchLatestPrices() {
 // ==========================================
 async function manualRefreshFromChart() {
     const chartCenter = document.getElementById('chart-center-text');
+    const marketStatus = document.getElementById('market-update-status');
+    if (marketStatus) marketStatus.innerText = '更新中...';
     if (chartCenter) {
         chartCenter.classList.replace('bg-slate-900', 'bg-blue-500');
         chartCenter.classList.add('animate-pulse');
@@ -1041,11 +1043,13 @@ async function manualRefreshFromChart() {
         if (typeof showToast === 'function') {
             showToast('股票價格與市場水位已順利更新完成！');
         }
+        if (marketStatus) marketStatus.innerText = `已更新 ${new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
     } catch (error) {
         console.error('更新資料時發生錯誤:', error);
         if (typeof showToast === 'function') {
             showToast('資料更新過程發生異常');
         }
+        if (marketStatus) marketStatus.innerText = '更新失敗';
     } finally {
         if (chartCenter) {
             chartCenter.classList.replace('bg-blue-500', 'bg-slate-900');

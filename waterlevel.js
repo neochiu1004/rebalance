@@ -389,7 +389,6 @@ function renderTrendChart(stock) {
 async function fetchFinmindHighLow() {
     if (!state.finmindToken) {
         if (typeof showToast === 'function') showToast('請先至設定頁輸入 FinMind Token');
-        if (typeof switchTab === 'function') switchTab('settings');
         return;
     }
     if (state.stocks.length === 0) {

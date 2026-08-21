@@ -42,7 +42,7 @@
         .view-section h1 { letter-spacing: -0.025em; }
         /* Visual system: midnight ink + electric lime + cool blue surfaces. */
         :root { --ink: #101828; --muted: #667085; --line: #E4E7EC; --lime: #B8F34A; --blue: #4F7CFF; }
-        body { color: var(--ink); background: #F4F7FB; }
+        body { color: var(--ink); background: #F4F7FB; padding-bottom: 6.75rem !important; }
         #app-content { padding-top: 1.25rem; }
         .view-section > h1,
         #view-rebalance > div:first-child,
@@ -101,9 +101,10 @@
             box-shadow: 0 -16px 34px -24px rgba(16, 24, 40, 0.6) !important;
         }
         nav button { border-radius: 16px; margin: 0.15rem 0.1rem; padding-top: 0.55rem !important; padding-bottom: 0.55rem !important; }
-        nav button.tab-active { color: #FFFFFF !important; background: var(--ink); box-shadow: 0 8px 16px -10px rgba(16, 24, 40, 0.85); }
-        nav button.tab-active svg { color: var(--lime); }
+        nav button.tab-active { color: #FFFFFF !important; background: #142A4A; max-width: 76px; min-height: 76px; border: 4px solid #FFFFFF; border-radius: 9999px; transform: translateY(-1.25rem) !important; box-shadow: 0 12px 22px -10px rgba(15, 35, 68, 0.9); }
+        nav button.tab-active svg, nav button.tab-active span { color: #FFFFFF !important; }
         nav button.tab-inactive:hover { color: var(--ink); background: #F2F4F7; }
+        .refresh-header { cursor: pointer; }
         @media (max-width: 639px) {
             #app-content { padding-top: 0.75rem; }
             .view-section > h1, #view-rebalance > div:first-child, #view-waterlevel > div:first-child, #view-assets > div:first-child { border-radius: 20px !important; }
@@ -397,7 +398,7 @@
     <main id="app-content" class="w-full max-w-md mx-auto p-4 sm:p-6 pb-24">
         
         <section id="view-assets" class="view-section transition-opacity duration-300">
-            <div class="flex justify-between items-start mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
+            <div data-refresh-header class="refresh-header flex justify-between items-start mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
                 <div>
                     <h1 class="text-lg font-bold text-slate-800 mb-1">總資產價值 (TWD)</h1>
                     <div class="flex items-center gap-2 text-slate-500">
@@ -486,7 +487,7 @@
         </section>
 
         <section id="view-trade" class="view-section hidden transition-opacity duration-300">
-            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">獨立交易下單</h1>
+            <h1 data-refresh-header class="refresh-header text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">獨立交易下單</h1>
             
             <div id="trade-tab-content" class="space-y-6 mb-8"></div>
 
@@ -501,7 +502,7 @@
 
         <!-- 重構: 再平衡試算 View (精準對齊極簡 UI 畫面) -->
         <section id="view-rebalance" class="view-section hidden transition-opacity duration-300">
-            <div class="mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
+            <div data-refresh-header class="refresh-header mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
                 <h1 class="text-2xl font-black text-slate-900 mb-1">再平衡試算</h1>
                 <p class="text-xs text-slate-400 font-semibold tracking-wide">僅計算目標權重變大於 0 的持股，現金視為債券部位</p>
             </div>
@@ -576,7 +577,7 @@
         </section>
 
         <section id="view-target" class="view-section hidden transition-opacity duration-300">
-            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">目標配置參數</h1>
+            <h1 data-refresh-header class="refresh-header text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">目標配置參數</h1>
             <div class="glass-card p-5 mb-6">
                 <div class="mb-6">
                     <div class="flex justify-between items-center mb-3">
@@ -605,9 +606,9 @@
         </section>
 
         <section id="view-waterlevel" class="view-section hidden transition-opacity duration-300">
-            <div class="sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 mb-6 flex justify-between items-center">
+            <div data-refresh-header class="refresh-header sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 mb-6 flex justify-between items-center">
                 <h1 class="text-2xl font-black text-slate-900 m-0">市場水位與黃金標尺</h1>
-                <button id="btn-fetch-finmind" onclick="fetchFinmindHighLow()" class="text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1.5">
+                    <button id="btn-fetch-finmind" onclick="event.stopPropagation(); fetchFinmindHighLow()" class="text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1.5">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                     抓取1年高低
                 </button>
@@ -616,7 +617,7 @@
         </section>
 
         <section id="view-settings" class="view-section hidden transition-opacity duration-300">
-            <h1 class="text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">資料管理與設定</h1>
+            <h1 data-settings-header class="refresh-header text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">資料管理與設定</h1>
             
             <div class="glass-card p-5 mb-6 border-l-4 border-l-blue-500">
                 <h2 class="font-bold text-slate-800 mb-2">資料備份與還原 (JSON)</h2>
@@ -650,7 +651,7 @@
 
     </main>
 
-    <nav class="fixed bottom-0 w-full bg-white/90 backdrop-blur-md border-t border-slate-200/60 flex justify-around items-center pb-safe pt-1.5 px-2 z-50 shadow-sm">
+    <nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200/60 flex justify-around items-center pb-safe pt-1.5 px-2 z-50 shadow-sm">
         <button onclick="switchTab('assets')" id="tab-assets" class="flex flex-col items-center p-2 pt-1.5 tab-active flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
             <span class="text-[10px]">資產總覽</span>
@@ -668,12 +669,8 @@
             <span class="text-[10px]">目標配置</span>
         </button>
         <button onclick="switchTab('waterlevel')" id="tab-waterlevel" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            <span class="text-[10px]">市場水位</span>
-        </button>
-        <button onclick="switchTab('settings')" id="tab-settings" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-            <span class="text-[10px]">設定</span>
+            <span class="text-[10px]">市場水位</span>
         </button>
     </nav>
 
@@ -781,6 +778,20 @@
         }
 
         function setupEventListeners() {
+            let refreshClickTimer = null;
+            document.querySelectorAll('[data-refresh-header]').forEach((header) => {
+                header.addEventListener('click', () => {
+                    clearTimeout(refreshClickTimer);
+                    refreshClickTimer = setTimeout(() => manualRefreshFromChart(), 220);
+                });
+                header.addEventListener('dblclick', (event) => {
+                    event.preventDefault();
+                    clearTimeout(refreshClickTimer);
+                    switchTab('settings');
+                    showToast('已開啟設定');
+                });
+            });
+
             const stockSlider = document.getElementById('target-stock-slider');
             if (stockSlider) {
                 stockSlider.addEventListener('input', (e) => {
