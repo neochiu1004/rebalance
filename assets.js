@@ -974,6 +974,9 @@ async function fetchLatestPrices() {
     }
 }
 
+// ==========================================
+// 手動更新按鈕：同時更新股票價格與市場水位資料
+// ==========================================
 async function manualRefreshFromChart() {
     const chartCenter = document.getElementById('chart-center-text');
     if (chartCenter) {
@@ -981,18 +984,47 @@ async function manualRefreshFromChart() {
         chartCenter.classList.add('animate-pulse');
     }
 
+    if (typeof showToast === 'function') {
+        showToast('開始更新股票價格與市場水位資料...');
+    }
+
     try {
-        await fetchLatestPrices();
-    } catch (e) {}
-    updateAllData();
-    
-    setTimeout(() => {
+        // 使用 Promise.allSettled 同時發送請求，確保單一失敗不會中斷另一項更新
+        const tasks = [];
+
+        // 1. 更新最新股票價格 (Fugle / 富果 API)
+        if (typeof fetchLatestPrices === 'function') {
+            tasks.push(fetchLatestPrices());
+        }
+
+        // 2. 更新市場水位歷史高低點與走勢資料 (FinMind API)
+        if (typeof fetchFinmindHighLow === 'function') {
+            tasks.push(fetchFinmindHighLow());
+        }
+
+        await Promise.allSettled(tasks);
+
+        // 3. 儲存狀態並重新渲染 UI
+        saveState();
+        updateAllData();
+        if (typeof renderWaterLevel === 'function') {
+            renderWaterLevel();
+        }
+
+        if (typeof showToast === 'function') {
+            showToast('股票價格與市場水位已順利更新完成！');
+        }
+    } catch (error) {
+        console.error('更新資料時發生錯誤:', error);
+        if (typeof showToast === 'function') {
+            showToast('資料更新過程發生異常');
+        }
+    } finally {
         if (chartCenter) {
             chartCenter.classList.replace('bg-blue-500', 'bg-slate-900');
             chartCenter.classList.remove('animate-pulse');
         }
-        if (typeof showToast === 'function') showToast('報價與損益狀態已刷新');
-    }, 500);
+    }
 }
 
 // ==========================================
