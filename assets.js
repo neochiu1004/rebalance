@@ -299,7 +299,6 @@ function calculatePortfolioState() {
     }
     const targetBeta = (state.targetStockRatio / 100) * targetWeightedBetaSum;
 
-    // 完整回傳所有 UI 與 rebalance.js 需要的指標欄位
     return {
         totalDisplayStockValue,
         activeStockValue,
@@ -407,11 +406,16 @@ function updateAllData() {
             <div class="glass-card p-4 transition-all hover:border-slate-300 relative overflow-hidden">
                 
                 <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
-                    <div class="flex items-center gap-2 max-w-[65%]">
+                    <div class="flex items-center gap-2 max-w-[60%]">
                         <span class="bg-slate-200 text-slate-700 text-xs px-2 py-1 rounded-md font-black shrink-0 shadow-inner">${Math.round(ratio)}%</span>
                         <div class="font-bold text-slate-900 text-base tracking-wide truncate">${nameDisplay} <span class="text-slate-400 text-xs font-medium ml-1">${symbolDisplay} β=${s.beta || 1}</span>${isExcluded ? '<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded ml-1">不參與平衡</span>' : ''}</div>
                     </div>
+                    <!-- 操作區：包含新增的水位快捷按鈕 -->
                     <div class="flex items-center gap-1 shrink-0 relative z-20">
+                        <button onclick="openWaterLevelDetail(${index})" class="flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors" title="查看市場水位與歷史走勢">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                            <span>水位</span>
+                        </button>
                         <button onclick="openEditModal(${index})" class="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-1.5 rounded-full transition-colors" title="編輯參數">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                         </button>
@@ -459,7 +463,7 @@ function updateAllData() {
     // 4. 更新圓環圖
     renderChart(metrics.totalDisplayStockValue, state.cash);
 
-    // 5. 觸發其他模組連動 (將 metrics 傳遞給 rebalance 模組，避免重新計算或找不到變數)
+    // 5. 觸發其他模組連動
     if (typeof populateQuickSelect === 'function') populateQuickSelect();
     if (typeof renderRebalanceResult === 'function') renderRebalanceResult(metrics);
     if (typeof syncWeightUI === 'function') syncWeightUI();
@@ -576,7 +580,6 @@ function calculateExpression(valStr) {
     if (!sanitized) return 0;
     if (sanitized !== valStr.replace(/\s/g, '')) throw new Error("無效算式");
 
-    // 只解析數字與四則運算，避免使用 eval/new Function 執行使用者輸入。
     const normalizedTokens = sanitized.match(/(?:\d+(?:\.\d*)?|\.\d+)|[+\-*/()]/g);
     if (!normalizedTokens || normalizedTokens.join('') !== sanitized) throw new Error("無效算式");
     let position = 0;
@@ -647,6 +650,20 @@ function saveEditCash(e) {
         if (typeof showToast === 'function') showToast('現金餘額已更新');
     } catch (err) {
         if (typeof showToast === 'function') showToast('計算式錯誤，請檢查輸入內容');
+    }
+}
+
+// ==========================================
+// 總覽卡片快捷前往市場水位
+// ==========================================
+function openWaterLevelDetail(index) {
+    if (!state.stocks || !state.stocks[index]) return;
+    
+    // 直接呼叫 waterlevel.js 的走勢圖 Modal
+    if (typeof openTrendModal === 'function') {
+        openTrendModal(index);
+    } else if (typeof switchTab === 'function') {
+        switchTab('waterlevel');
     }
 }
 
@@ -769,7 +786,6 @@ function executeMergeOrAdd(newStock) {
         const addedPaidCost = Number(newStock.paidCost) || 0;
         existing.paidCost = Number(oldPaidCost) + addedPaidCost;
         if (totalShares > 0) {
-            // 均價與 paidCost 使用同一個含手續費的實際買入成本基準。
             existing.costPrice = existing.paidCost / totalShares;
         }
         existing.shares = totalShares;
@@ -832,7 +848,6 @@ async function addStockSubmit(e) {
     costPrice = parseFloat(costPrice) || 0;
     currentPrice = parseFloat(currentPrice) || costPrice;
     
-    // 防呆處理
     const isETFOrLevFunc = typeof isETFOrLeveraged === 'function' ? isETFOrLeveraged : () => false;
     beta = parseFloat(beta) || (isETFOrLevFunc(symbol, name) && name.includes('正2') ? 2 : 1);
     if (!name) name = symbol;
@@ -989,22 +1004,20 @@ async function manualRefreshFromChart() {
     }
 
     try {
-        // 使用 Promise.allSettled 同時發送請求，確保單一失敗不會中斷另一項更新
         const tasks = [];
 
-        // 1. 更新最新股票價格 (Fugle / 富果 API)
+        // 1. 更新最新股票價格 (Fugle)
         if (typeof fetchLatestPrices === 'function') {
             tasks.push(fetchLatestPrices());
         }
 
-        // 2. 更新市場水位歷史高低點與走勢資料 (FinMind API)
+        // 2. 更新市場水位歷史高低點與走勢資料 (FinMind)
         if (typeof fetchFinmindHighLow === 'function') {
             tasks.push(fetchFinmindHighLow());
         }
 
         await Promise.allSettled(tasks);
 
-        // 3. 儲存狀態並重新渲染 UI
         saveState();
         updateAllData();
         if (typeof renderWaterLevel === 'function') {
@@ -1106,7 +1119,6 @@ function handleCSVUpload(e) {
                     shares: shares,
                     fee: importCost.fee,
                     tax: 0,
-                    netAmount: paidCost,
                     netAmount: paidCost
                 };
 
@@ -1168,7 +1180,6 @@ function handleCSVUpload(e) {
 
 // ==========================================
 // MCE SMART PATCH - assets.js (CSV 寫入引擎升級)
-// 請將原有的 processCSVRow() 函數替換為以下版本
 // ==========================================
 
 function processCSVRow(row) {
@@ -1186,10 +1197,8 @@ function processCSVRow(row) {
     const txPrice = parseFloat(costPrice) || 0;
     const txType = (type === 'buy' || type === '買進') ? 'buy' : 'sell';
     
-    // 依據現價與股數精算手續費與稅 (模擬真實交易)
     const cost = calculateTradingCost({ type: txType, price: txPrice, shares: txShares, stock: { symbol, name } });
 
-    // 1. 完整寫入交易紀錄陣列 (支援 trade.js 渲染)
     existing.transactions.push({
         id: 'csv_' + Date.now() + Math.random().toString(36).substr(2, 9),
         type: txType,
@@ -1200,10 +1209,9 @@ function processCSVRow(row) {
         netAmount: cost.netAmount,
         date: date || new Date().toISOString().split('T')[0],
         note: 'CSV 批次匯入',
-        isImported: true // 標記為匯入，避免後續重複計費
+        isImported: true
     });
 
-    // 2. 累加/扣抵實體持股與均價
     if (txType === 'buy') {
         const totalCost = cost.netAmount;
         const prevPaidSum = (existing.costPrice || 0) * (existing.shares || 0);
