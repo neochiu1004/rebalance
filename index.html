@@ -105,6 +105,8 @@
         nav button.tab-active { color: #FFFFFF !important; background: #142A4A !important; max-width: 76px; min-height: 76px; border: 4px solid #FFFFFF; border-radius: 9999px; transform: translateY(-1.35rem) !important; box-shadow: 0 12px 22px -10px rgba(15, 35, 68, 0.9) !important; }
         nav button.tab-active svg, nav button.tab-active span { color: #FFFFFF !important; }
         nav button.tab-inactive:hover { color: #FFFFFF !important; background: transparent !important; }
+        #tab-waterlevel svg { display: none; }
+        #tab-waterlevel::before { content: '↕'; display: block; height: 1.5rem; line-height: 1.5rem; font-size: 1.65rem; font-weight: 700; }
         .refresh-header { cursor: pointer; }
         @media (max-width: 639px) {
             #app-content { padding-top: 0.75rem; }
@@ -187,7 +189,7 @@
             <div class="mb-4">
                 <button type="button" id="auto-fetch-hp-btn" onclick="autoFetchHighLow()" class="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 active:scale-95 shadow-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    ⚡ 一鍵透過 FinMind 自動抓取近 1 年高低點
+                    ↻ 改回 FinMind 自動抓取近 1 年高低點
                 </button>
             </div>
             <form id="highpoint-form" onsubmit="saveHighPoint(event)" class="space-y-4">

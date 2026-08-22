@@ -122,6 +122,7 @@ function processImport(data) {
         highDate: s.highDate !== undefined ? s.highDate : null,
         lowPrice: s.lowPrice !== undefined ? s.lowPrice : null,
         lowDate: s.lowDate !== undefined ? s.lowDate : null,
+        waterLevelSource: s.waterLevelSource || 'finmind',
         transactions: s.transactions || [] // 確保新版交易簿相容並保留
     }));
     

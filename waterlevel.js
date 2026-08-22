@@ -94,6 +94,7 @@ function saveHighPoint(e) {
     state.stocks[editingHpIndex].highDate = hpDate;
     state.stocks[editingHpIndex].lowPrice = lpPrice;
     state.stocks[editingHpIndex].lowDate = lpDate;
+    state.stocks[editingHpIndex].waterLevelSource = 'manual';
     
     saveState();
     if (typeof updateAllData === 'function') updateAllData();
@@ -449,6 +450,7 @@ async function fetchFinmindHighLow() {
                     stock.lowPrice = lowPoint.price;
                     stock.lowDate = lowPoint.date;
                     stock.historyData = historyData;
+                    stock.waterLevelSource = 'finmind';
                     updatedCount++;
                 }
             }
@@ -551,6 +553,8 @@ async function autoFetchHighLow() {
             state.stocks[editingHpIndex].lowPrice = minPrice;
             state.stocks[editingHpIndex].lowDate = minDate;
             state.stocks[editingHpIndex].historyData = historyData;
+            state.stocks[editingHpIndex].waterLevelSource = 'finmind';
+            saveState();
             
             if (typeof showToast === 'function') showToast(`已成功帶入 ${symbol} 近 1 年極值與歷史走勢！`);
         }
