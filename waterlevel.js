@@ -102,6 +102,21 @@ function saveHighPoint(e) {
     if (typeof showToast === 'function') showToast('高低點區間與黃金標尺已更新');
 }
 
+function clearManualHighLow() {
+    if (editingHpIndex === -1 || !state.stocks[editingHpIndex]) return;
+
+    const stock = state.stocks[editingHpIndex];
+    stock.highPrice = null;
+    stock.highDate = null;
+    stock.lowPrice = null;
+    stock.lowDate = null;
+    stock.waterLevelSource = 'finmind';
+    saveState();
+    if (typeof updateAllData === 'function') updateAllData();
+    closeHighPointModal();
+    if (typeof showToast === 'function') showToast('已清除自訂最高點與最低點，可重新使用 FinMind 自動抓取');
+}
+
 // ==========================================
 // 趨勢走勢圖 Modal 渲染邏輯 (Chart.js 平行水位線)
 // ==========================================
