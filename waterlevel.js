@@ -232,6 +232,21 @@ function renderTrendChart(stock) {
         fill: false
     });
 
+    const makeExtremePointDataset = (label, date, value, color) => ({
+        label: `${label} @${fmtPrice(value)}`,
+        data: labels.map(itemDate => itemDate === date ? value : null),
+        borderColor: color,
+        backgroundColor: color,
+        pointBackgroundColor: color,
+        pointBorderColor: '#FFFFFF',
+        pointBorderWidth: 2,
+        pointRadius: labels.map(itemDate => itemDate === date ? 5 : 0),
+        pointHoverRadius: 7,
+        showLine: false,
+        spanGaps: false,
+        fill: false
+    });
+
     const datasets = [{
         label: '收盤價',
         data: prices,
@@ -244,8 +259,14 @@ function renderTrendChart(stock) {
     if (len >= 20) datasets.push(makeMovingAverageDataset('20日均線', 20, '#3B82F6'));
     if (len >= 60) datasets.push(makeMovingAverageDataset('60日均線', 60, '#8B5CF6'));
 
-    if (hp > 0) datasets.push(makeDataset('前高', hp, '#EF4444', false));
-    if (lp > 0) datasets.push(makeDataset('前低', lp, '#22C55E', false));
+    if (hp > 0) {
+        datasets.push(makeDataset(`前高 @${fmtPrice(hp)}`, hp, '#EF4444', false));
+        if (stock.highDate) datasets.push(makeExtremePointDataset('最高點', stock.highDate, hp, '#EF4444'));
+    }
+    if (lp > 0) {
+        datasets.push(makeDataset(`前低 @${fmtPrice(lp)}`, lp, '#22C55E', false));
+        if (stock.lowDate) datasets.push(makeExtremePointDataset('最低點', stock.lowDate, lp, '#22C55E'));
+    }
 
     if (hp > 0 && lp > 0 && range > 0) {
         datasets.push(makeDataset('0.786', lp + range * 0.786, '#94A3B8'));
