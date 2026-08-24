@@ -8,6 +8,19 @@ let trendChartInstance = null;
 let waterLevelTrendChartInstance = null;
 let trendRange = '1Y';
 let trendChartStock = null;
+let trendChartMode = 'line';
+
+function setTrendChartMode(mode) {
+    trendChartMode = mode === 'candlestick' ? 'candlestick' : 'line';
+    document.querySelectorAll('[data-trend-mode]').forEach(button => {
+        const active = button.dataset.trendMode === trendChartMode;
+        button.classList.toggle('bg-white', active);
+        button.classList.toggle('shadow-sm', active);
+        button.classList.toggle('text-slate-900', active);
+        button.classList.toggle('text-slate-500', !active);
+    });
+    if (trendChartStock) renderTrendChart(trendChartStock);
+}
 
 function setTrendRange(range) {
     trendRange = range;
@@ -33,6 +46,96 @@ function getTrendHistory(stock) {
     const startDate = new Date(lastDate);
     startDate.setDate(startDate.getDate() - days);
     return history.filter(item => new Date(item.d) >= startDate);
+}
+
+function getOhlc(item) {
+    const close = Number(item.c);
+    const open = Number(item.o);
+    const high = Number(item.h);
+    const low = Number(item.l);
+    return {
+        o: Number.isFinite(open) ? open : close,
+        h: Number.isFinite(high) ? high : close,
+        l: Number.isFinite(low) ? low : close,
+        c: close
+    };
+}
+
+function getTransactionIndex(transaction, labels) {
+    if (!transaction || !labels.length) return -1;
+    const exact = labels.indexOf(transaction.date);
+    if (exact >= 0) return exact;
+    const target = new Date(transaction.date).getTime();
+    let best = -1;
+    labels.forEach((date, index) => {
+        const time = new Date(date).getTime();
+        if (Number.isFinite(target) && Number.isFinite(time) && time <= target) best = index;
+    });
+    return best;
+}
+
+function makeCrosshairPlugin(selectedIndexRef) {
+    return {
+        id: `chartCrosshair${Math.random().toString(36).slice(2)}`,
+        afterDraw(chart) {
+            const index = selectedIndexRef.value;
+            if (index === null || index < 0 || !chart.chartArea || !chart.scales.x) return;
+            const x = chart.scales.x.getPixelForValue(index);
+            const yScale = chart.scales.y;
+            const activeValue = chart.data.datasets[0]?.data[index];
+            const value = typeof activeValue === 'object' ? activeValue.c : activeValue;
+            if (!Number.isFinite(Number(value))) return;
+            const y = yScale.getPixelForValue(Number(value));
+            const { ctx, chartArea } = chart;
+            ctx.save();
+            ctx.strokeStyle = '#64748B';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.moveTo(chartArea.left, y);
+            ctx.lineTo(chartArea.right, y);
+            ctx.stroke();
+            ctx.restore();
+        }
+    };
+}
+
+function makeCandlestickPlugin(historyData) {
+    return {
+        id: `candlesticks${Math.random().toString(36).slice(2)}`,
+        beforeDatasetsDraw(chart) {
+            if (trendChartMode !== 'candlestick' || !chart.chartArea) return;
+            const { ctx, chartArea, scales } = chart;
+            const xScale = scales.x;
+            const yScale = scales.y;
+            const candleWidth = Math.max(3, Math.min(9, (chartArea.right - chartArea.left) / Math.max(historyData.length, 1) * 0.62));
+            ctx.save();
+            historyData.forEach((item, index) => {
+                const candle = getOhlc(item);
+                if (![candle.o, candle.h, candle.l, candle.c].every(Number.isFinite)) return;
+                const x = xScale.getPixelForValue(index);
+                const yOpen = yScale.getPixelForValue(candle.o);
+                const yClose = yScale.getPixelForValue(candle.c);
+                const yHigh = yScale.getPixelForValue(candle.h);
+                const yLow = yScale.getPixelForValue(candle.l);
+                const rising = candle.c >= candle.o;
+                const color = rising ? '#16A34A' : '#DC2626';
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(x, yHigh);
+                ctx.lineTo(x, yLow);
+                ctx.stroke();
+                const top = Math.min(yOpen, yClose);
+                const height = Math.max(1, Math.abs(yClose - yOpen));
+                ctx.fillRect(x - candleWidth / 2, top, candleWidth, height);
+            });
+            ctx.restore();
+        }
+    };
 }
 
 // 開啟設定高低點 Modal
@@ -151,6 +254,7 @@ function openTrendModal(index) {
     }
 
     if (noDataEl) noDataEl.classList.add('hidden');
+    setTrendChartMode(trendChartMode);
     updateTrendRangeButtons();
     renderTrendChart(stock);
 }
@@ -192,7 +296,7 @@ function renderTrendChart(stock) {
 
     const historyData = getTrendHistory(stock);
     const labels = historyData.map(h => h.d);
-    const prices = historyData.map(h => h.c);
+    const prices = historyData.map(h => Number(h.c));
     const len = prices.length;
 
     const hp = parseFloat(stock.highPrice) || 0;
@@ -247,14 +351,36 @@ function renderTrendChart(stock) {
         fill: false
     });
 
+    const selectedPriceIndex = { value: null };
     const datasets = [{
         label: '收盤價',
         data: prices,
-        borderColor: '#0F172A',
+        borderColor: trendChartMode === 'candlestick' ? 'rgba(0,0,0,0)' : '#0F172A',
         borderWidth: 2,
         pointRadius: 0,
-        fill: false
+        fill: false,
+        pointHitRadius: 12
     }];
+
+    if (trendChartMode === 'candlestick') {
+        // 讓座標軸包含 K 線影線的最高／最低價，但不額外畫出兩條線。
+        datasets.push({
+            label: 'K線範圍',
+            data: historyData.map(item => getOhlc(item).h),
+            borderColor: 'rgba(0,0,0,0)',
+            pointRadius: 0,
+            showLine: false,
+            fill: false
+        });
+        datasets.push({
+            label: 'K線範圍',
+            data: historyData.map(item => getOhlc(item).l),
+            borderColor: 'rgba(0,0,0,0)',
+            pointRadius: 0,
+            showLine: false,
+            fill: false
+        });
+    }
 
     if (len >= 20) datasets.push(makeMovingAverageDataset('20日均線', 20, '#3B82F6'));
     if (len >= 60) datasets.push(makeMovingAverageDataset('60日均線', 60, '#8B5CF6'));
@@ -275,6 +401,32 @@ function renderTrendChart(stock) {
         datasets.push(makeDataset('0.5', lp + range * 0.5, '#64748B'));
     }
 
+    const transactions = Array.isArray(stock.transactions) ? stock.transactions : [];
+    transactions.forEach(transaction => {
+        const index = getTransactionIndex(transaction, labels);
+        if (index < 0) return;
+        const isBuy = transaction.type === 'buy';
+        const price = Number(transaction.price);
+        if (!Number.isFinite(price)) return;
+        datasets.push({
+            label: isBuy ? '買進' : '賣出',
+            data: labels.map((_, itemIndex) => itemIndex === index ? price : null),
+            borderColor: isBuy ? '#16A34A' : '#DC2626',
+            backgroundColor: isBuy ? '#16A34A' : '#DC2626',
+            pointBackgroundColor: isBuy ? '#16A34A' : '#DC2626',
+            pointBorderColor: '#FFFFFF',
+            pointBorderWidth: 2,
+            pointRadius: labels.map((_, itemIndex) => itemIndex === index ? 5 : 0),
+            pointHoverRadius: 8,
+            showLine: false,
+            transaction,
+            fill: false
+        });
+    });
+
+    const crosshairPlugin = makeCrosshairPlugin(selectedPriceIndex);
+    const candlePlugin = makeCandlestickPlugin(historyData);
+
     trendChartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
@@ -286,15 +438,24 @@ function renderTrendChart(stock) {
                 legend: {
                     display: true,
                     position: 'top',
-                    labels: { boxWidth: 12, font: { size: 10 } }
+                    labels: { boxWidth: 12, font: { size: 10 }, filter: item => item.text !== 'K線範圍' }
                 },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
                     callbacks: {
-                        title: items => items[0] ? items[0].label : ''
+                        title: items => items[0] ? items[0].label : '',
+                        label: context => context.dataset.transaction
+                            ? `${context.dataset.transaction.type === 'buy' ? '買進' : '賣出'} @${fmtPrice(context.dataset.transaction.price)} · ${fmt(context.dataset.transaction.shares)} 股`
+                            : `${context.dataset.label}: @${fmtPrice(context.parsed.y)}`
                     }
-                }
+                },
+                crosshair: { selectedPriceIndex }
+            },
+            onClick: (event, elements, chart) => {
+                const hit = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true)[0];
+                selectedPriceIndex.value = hit ? hit.index : null;
+                chart.draw();
             },
             scales: {
                 x: {
@@ -306,7 +467,8 @@ function renderTrendChart(stock) {
                     ticks: { font: { size: 10 }, callback: value => `@${value}` }
                 }
             }
-        }
+        },
+        plugins: [candlePlugin, crosshairPlugin]
     });
 
     // 水位以「距期間高點的回檔百分比」表示，和卡片上的 -10% / -20% 定義一致。
@@ -366,6 +528,8 @@ function renderTrendChart(stock) {
         }
     };
 
+    const selectedWaterIndex = { value: null };
+    const waterCrosshairPlugin = makeCrosshairPlugin(selectedWaterIndex);
     waterLevelTrendChartInstance = new Chart(waterCtx, {
         type: 'line',
         data: {
@@ -399,9 +563,14 @@ function renderTrendChart(stock) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        label: context => `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
+                        label: context => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}%`
                     }
                 }
+            },
+            onClick: (event, elements, chart) => {
+                const hit = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true)[0];
+                selectedWaterIndex.value = hit ? hit.index : null;
+                chart.draw();
             },
             scales: {
                 x: {
@@ -416,7 +585,7 @@ function renderTrendChart(stock) {
                 }
             }
         },
-        plugins: [waterLevelBackgroundPlugin]
+        plugins: [waterLevelBackgroundPlugin, waterCrosshairPlugin]
     });
 }
 
@@ -476,7 +645,13 @@ async function fetchFinmindHighLow() {
 
                 // 高低點、趨勢圖與水位都使用同一個有效區間，避免除權息前後資料混在一起。
                 const validData = resData.data.slice(validStartIndex).filter(day => Number(day.close) > 0);
-                const historyData = validData.map(day => ({ d: day.date, c: Number(day.close) }));
+                const historyData = validData.map(day => ({
+                    d: day.date,
+                    o: Number(day.open),
+                    h: Number(day.max),
+                    l: Number(day.min),
+                    c: Number(day.close)
+                }));
                 const highPoint = validData.reduce((best, day) => Number(day.max) > best.price ? { price: Number(day.max), date: day.date } : best, { price: -Infinity, date: '' });
                 const lowPoint = validData.reduce((best, day) => Number(day.min) < best.price ? { price: Number(day.min), date: day.date } : best, { price: Infinity, date: '' });
 
@@ -576,7 +751,13 @@ async function autoFetchHighLow() {
             }
         }
 
-        const historyData = dataList.slice(validStartIndex).map(day => ({ d: day.date, c: day.close }));
+        const historyData = dataList.slice(validStartIndex).map(day => ({
+            d: day.date,
+            o: Number(day.open),
+            h: Number(day.max),
+            l: Number(day.min),
+            c: Number(day.close)
+        }));
 
         if (maxPrice !== -Infinity && minPrice !== Infinity) {
             document.getElementById('hp-price').value = maxPrice;

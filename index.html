@@ -186,12 +186,6 @@
                 <h2 class="font-bold text-xl text-slate-800">設定高低點區間</h2>
                 <button onclick="closeHighPointModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
             </div>
-            <div class="mb-4">
-                <button type="button" id="auto-fetch-hp-btn" onclick="autoFetchHighLow()" class="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 active:scale-95 shadow-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    ↻ 改回 FinMind 自動抓取近 1 年高低點
-                </button>
-            </div>
             <form id="highpoint-form" onsubmit="saveHighPoint(event)" class="space-y-4">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -233,7 +227,13 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <div class="text-[11px] font-bold text-slate-500 mb-1">股價走勢</div>
+            <div class="flex items-center justify-between mb-1">
+                <div class="text-[11px] font-bold text-slate-500">股價走勢</div>
+                <div class="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                    <button type="button" data-trend-mode="line" onclick="setTrendChartMode('line')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-white text-slate-900 shadow-sm">線圖</button>
+                    <button type="button" data-trend-mode="candlestick" onclick="setTrendChartMode('candlestick')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold text-slate-500">K線</button>
+                </div>
+            </div>
             <div class="relative w-full h-56 sm:h-64 mb-4">
                 <canvas id="trendChart"></canvas>
             </div>
@@ -257,7 +257,7 @@
                 <span><i class="inline-block w-5 h-3 rounded-sm bg-rose-100 align-middle mr-1"></i>股災區間（-20% 以上）</span>
             </div>
             <div id="trend-no-data-msg" class="hidden absolute inset-0 flex items-center justify-center bg-white/95 rounded-2xl text-center p-6 text-sm font-semibold text-slate-400">
-                尚無歷史資料，請先點擊「抓取 1 年高低」載入報價。
+                尚無歷史資料，請先在市場水位頁載入歷史報價。
             </div>
         </div>
     </div>
@@ -612,10 +612,6 @@
         <section id="view-waterlevel" class="view-section hidden transition-opacity duration-300">
             <div data-refresh-header class="refresh-header sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 mb-6 flex justify-between items-center">
                 <h1 class="text-2xl font-black text-slate-900 m-0">市場水位與黃金標尺</h1>
-                    <button id="btn-fetch-finmind" onclick="event.stopPropagation(); fetchFinmindHighLow()" class="text-[11px] font-bold text-white bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-1.5">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    抓取1年高低
-                </button>
             </div>
             <div id="waterlevel-list" class="space-y-4"></div>
         </section>
