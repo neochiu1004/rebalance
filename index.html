@@ -227,6 +227,22 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
+
+            <!-- 新增：固定位置的數據資訊列，取代原本會遮擋圖表的 Tooltip -->
+            <div id="fixed-chart-info-bar" class="hidden bg-blue-50/50 border border-blue-100 rounded-xl p-3 mb-4 flex justify-between items-center transition-all">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold text-blue-500 uppercase tracking-wider" id="fixed-info-date">請點擊或滑動圖表</span>
+                    <div class="flex items-baseline gap-1 mt-0.5">
+                        <span class="text-[10px] text-blue-600 font-bold">收盤</span>
+                        <span class="text-base font-black text-blue-900" id="fixed-info-price">--</span>
+                    </div>
+                </div>
+                <div class="flex flex-col text-right">
+                    <span class="text-[10px] font-bold text-blue-500 uppercase tracking-wider">距離高點水位</span>
+                    <span class="text-base font-black text-blue-900" id="fixed-info-level">--</span>
+                </div>
+            </div>
+
             <div class="flex items-center justify-between mb-1">
                 <div class="text-[11px] font-bold text-slate-500">股價走勢</div>
                 <div class="flex items-center gap-1 rounded-xl bg-slate-100 p-1">

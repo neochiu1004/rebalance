@@ -88,15 +88,30 @@ function makeCrosshairPlugin(selectedIndexRef) {
             const y = yScale.getPixelForValue(Number(value));
             const { ctx, chartArea } = chart;
             ctx.save();
-            ctx.strokeStyle = '#64748B';
+            
+            // 繪製垂直與水平對齊虛線
+            ctx.strokeStyle = '#94A3B8';
             ctx.lineWidth = 1;
-            ctx.setLineDash([4, 3]);
+            ctx.setLineDash([4, 4]);
             ctx.beginPath();
             ctx.moveTo(x, chartArea.top);
             ctx.lineTo(x, chartArea.bottom);
             ctx.moveTo(chartArea.left, y);
             ctx.lineTo(chartArea.right, y);
             ctx.stroke();
+
+            // 繪製交會處的發光圓點標示
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#3B82F6';
+            ctx.shadowColor = 'rgba(59, 130, 246, 0.5)';
+            ctx.shadowBlur = 6;
+            ctx.stroke();
+            
             ctx.restore();
         }
     };
@@ -308,6 +323,33 @@ function renderTrendChart(stock) {
     const rangeEl = document.getElementById('trend-date-range');
     if (rangeEl) rangeEl.textContent = rangeStart && rangeEnd ? `${rangeStart.slice(5)} - ${rangeEnd.slice(5)}` : '';
 
+    // 動態更新固定資訊面板
+    const updateFixedInfoBar = (index) => {
+        const dateEl = document.getElementById('fixed-info-date');
+        const priceEl = document.getElementById('fixed-info-price');
+        const levelEl = document.getElementById('fixed-info-level');
+        const barEl = document.getElementById('fixed-chart-info-bar');
+        
+        if (!barEl || index === null || index < 0) return;
+        
+        barEl.classList.remove('hidden');
+        dateEl.textContent = labels[index] || '';
+        const price = prices[index];
+        priceEl.textContent = typeof price === 'number' ? fmtPrice(price) : '--';
+        
+        if (hp > 0 && price > 0) {
+            const dropPct = ((price / hp) - 1) * 100;
+            const sign = dropPct > 0 ? '+' : '';
+            levelEl.textContent = `${sign}${dropPct.toFixed(2)}%`;
+            levelEl.className = dropPct <= -20 ? 'text-base font-black text-rose-600' :
+                                dropPct <= -10 ? 'text-base font-black text-amber-500' :
+                                'text-base font-black text-emerald-600';
+        } else {
+            levelEl.textContent = '--';
+            levelEl.className = 'text-base font-black text-blue-900';
+        }
+    };
+
     // 建立平行水平線常數陣列
     const makeDataset = (label, val, color, isDashed = true) => ({
         label,
@@ -319,7 +361,6 @@ function renderTrendChart(stock) {
         fill: false
     });
 
-    // 逐日計算移動平均，避免把最後一個均線值複製成水平線。
     const makeMovingAverageDataset = (label, period, color) => ({
         label,
         data: prices.map((_, index) => {
@@ -363,7 +404,6 @@ function renderTrendChart(stock) {
     }];
 
     if (trendChartMode === 'candlestick') {
-        // 讓座標軸包含 K 線影線的最高／最低價，但不額外畫出兩條線。
         datasets.push({
             label: 'K線範圍',
             data: historyData.map(item => getOhlc(item).h),
@@ -427,6 +467,12 @@ function renderTrendChart(stock) {
     const crosshairPlugin = makeCrosshairPlugin(selectedPriceIndex);
     const candlePlugin = makeCandlestickPlugin(historyData);
 
+    // 預設帶入最後一筆資料到固定面板
+    if (len > 0) {
+        selectedPriceIndex.value = len - 1;
+        updateFixedInfoBar(len - 1);
+    }
+
     trendChartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
@@ -434,28 +480,29 @@ function renderTrendChart(stock) {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
+            interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: {
                     display: true,
                     position: 'top',
                     labels: { boxWidth: 12, font: { size: 10 }, filter: item => item.text !== 'K線範圍' }
                 },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        title: items => items[0] ? items[0].label : '',
-                        label: context => context.dataset.transaction
-                            ? `${context.dataset.transaction.type === 'buy' ? '買進' : '賣出'} @${fmtPrice(context.dataset.transaction.price)} · ${fmt(context.dataset.transaction.shares)} 股`
-                            : `${context.dataset.label}: @${fmtPrice(context.parsed.y)}`
-                    }
-                },
+                tooltip: { enabled: false }, // 關閉原生會遮擋的 tooltip
                 crosshair: { selectedPriceIndex }
             },
+            onHover: (event, elements, chart) => {
+                if (elements && elements.length > 0) {
+                    selectedPriceIndex.value = elements[0].index;
+                    updateFixedInfoBar(elements[0].index);
+                    chart.draw();
+                }
+            },
             onClick: (event, elements, chart) => {
-                const hit = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true)[0];
-                selectedPriceIndex.value = hit ? hit.index : null;
-                chart.draw();
+                if (elements && elements.length > 0) {
+                    selectedPriceIndex.value = elements[0].index;
+                    updateFixedInfoBar(elements[0].index);
+                    chart.draw();
+                }
             },
             scales: {
                 x: {
@@ -471,7 +518,6 @@ function renderTrendChart(stock) {
         plugins: [candlePlugin, crosshairPlugin]
     });
 
-    // 水位以「距期間高點的回檔百分比」表示，和卡片上的 -10% / -20% 定義一致。
     const drawdowns = prices.map(price => hp > 0 && price > 0 ? ((price / hp) - 1) * 100 : null);
     const latestDrawdown = drawdowns.filter(value => value !== null).at(-1);
     const summaryEl = document.getElementById('trend-water-summary');
@@ -528,7 +574,7 @@ function renderTrendChart(stock) {
         }
     };
 
-    const selectedWaterIndex = { value: null };
+    const selectedWaterIndex = { value: len > 0 ? len - 1 : null };
     const waterCrosshairPlugin = makeCrosshairPlugin(selectedWaterIndex);
     waterLevelTrendChartInstance = new Chart(waterCtx, {
         type: 'line',
@@ -541,10 +587,7 @@ function renderTrendChart(stock) {
                     borderColor: '#F97316',
                     backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     borderWidth: 2,
-                    pointRadius: context => context.dataIndex === len - 1 ? 5 : 0,
-                    pointBackgroundColor: '#7C8781',
-                    pointBorderColor: '#FFFFFF',
-                    pointBorderWidth: 2,
+                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0, // 隱藏原本的結尾點，改用 crosshairPlugin 繪製
                     fill: true,
                     tension: 0.18,
                     spanGaps: true
@@ -561,16 +604,19 @@ function renderTrendChart(stock) {
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: context => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}%`
-                    }
+                tooltip: { enabled: false } // 關閉原生 tooltip
+            },
+            onHover: (event, elements, chart) => {
+                if (elements && elements.length > 0) {
+                    selectedWaterIndex.value = elements[0].index;
+                    chart.draw();
                 }
             },
             onClick: (event, elements, chart) => {
-                const hit = chart.getElementsAtEventForMode(event, 'index', { intersect: false }, true)[0];
-                selectedWaterIndex.value = hit ? hit.index : null;
-                chart.draw();
+                if (elements && elements.length > 0) {
+                    selectedWaterIndex.value = elements[0].index;
+                    chart.draw();
+                }
             },
             scales: {
                 x: {
