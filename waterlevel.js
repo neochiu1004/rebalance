@@ -326,27 +326,58 @@ function renderTrendChart(stock) {
     // 動態更新固定資訊面板
     const updateFixedInfoBar = (index) => {
         const dateEl = document.getElementById('fixed-info-date');
-        const priceEl = document.getElementById('fixed-info-price');
+        const closeEl = document.getElementById('fixed-info-close');
+        const highEl = document.getElementById('fixed-info-high');
+        const lowEl = document.getElementById('fixed-info-low');
         const levelEl = document.getElementById('fixed-info-level');
+        const transEl = document.getElementById('fixed-info-transaction');
         const barEl = document.getElementById('fixed-chart-info-bar');
         
         if (!barEl || index === null || index < 0) return;
         
         barEl.classList.remove('hidden');
-        dateEl.textContent = labels[index] || '';
+        const currentDate = labels[index] || '';
+        dateEl.textContent = currentDate;
+        
         const price = prices[index];
-        priceEl.textContent = typeof price === 'number' ? fmtPrice(price) : '--';
+        const item = historyData[index];
+        const ohlc = item ? getOhlc(item) : { h: null, l: null, c: price };
+        
+        highEl.textContent = Number.isFinite(ohlc.h) ? fmtPrice(ohlc.h) : '--';
+        lowEl.textContent = Number.isFinite(ohlc.l) ? fmtPrice(ohlc.l) : '--';
+        closeEl.textContent = Number.isFinite(ohlc.c) ? fmtPrice(ohlc.c) : '--';
         
         if (hp > 0 && price > 0) {
             const dropPct = ((price / hp) - 1) * 100;
             const sign = dropPct > 0 ? '+' : '';
             levelEl.textContent = `${sign}${dropPct.toFixed(2)}%`;
-            levelEl.className = dropPct <= -20 ? 'text-base font-black text-rose-600' :
-                                dropPct <= -10 ? 'text-base font-black text-amber-500' :
-                                'text-base font-black text-emerald-600';
+            levelEl.className = dropPct <= -20 ? 'text-sm font-black text-rose-600' :
+                                dropPct <= -10 ? 'text-sm font-black text-amber-500' :
+                                'text-sm font-black text-emerald-600';
         } else {
             levelEl.textContent = '--';
-            levelEl.className = 'text-base font-black text-blue-900';
+            levelEl.className = 'text-sm font-black text-blue-900';
+        }
+
+        // 處理交易紀錄顯示
+        const dayTrans = (Array.isArray(stock.transactions) ? stock.transactions : []).filter(t => t.date === currentDate);
+        if (dayTrans.length > 0) {
+            transEl.classList.remove('hidden');
+            transEl.innerHTML = dayTrans.map(t => {
+                const isBuy = t.type === 'buy';
+                const actionColor = isBuy ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50';
+                const actionText = isBuy ? '買進' : '賣出';
+                return `<div class="flex justify-between items-center">
+                            <div class="flex items-center gap-2">
+                                <span class="px-1.5 py-0.5 rounded ${actionColor}">${actionText}</span>
+                                <span class="text-slate-800">@${fmtPrice(t.price)}</span>
+                            </div>
+                            <span class="text-slate-500">${fmt(t.shares)} 股</span>
+                        </div>`;
+            }).join('');
+        } else {
+            transEl.classList.add('hidden');
+            transEl.innerHTML = '';
         }
     };
 
@@ -485,7 +516,12 @@ function renderTrendChart(stock) {
                 legend: {
                     display: true,
                     position: 'top',
-                    labels: { boxWidth: 12, font: { size: 10 }, filter: item => item.text !== 'K線範圍' }
+                    labels: { 
+                        boxWidth: 12, 
+                        font: { size: 10 }, 
+                        // 正確過濾掉 K線範圍與買進、賣出標籤
+                        filter: item => !['K線範圍', '買進', '賣出'].includes(item.text) 
+                    }
                 },
                 tooltip: { enabled: false }, // 關閉原生會遮擋的 tooltip
                 crosshair: { selectedPriceIndex }
@@ -587,7 +623,7 @@ function renderTrendChart(stock) {
                     borderColor: '#F97316',
                     backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     borderWidth: 2,
-                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0, // 隱藏原本的結尾點，改用 crosshairPlugin 繪製
+                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0,
                     fill: true,
                     tension: 0.18,
                     spanGaps: true
@@ -604,7 +640,7 @@ function renderTrendChart(stock) {
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
-                tooltip: { enabled: false } // 關閉原生 tooltip
+                tooltip: { enabled: false }
             },
             onHover: (event, elements, chart) => {
                 if (elements && elements.length > 0) {
