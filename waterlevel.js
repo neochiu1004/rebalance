@@ -10,6 +10,28 @@ let trendRange = '1Y';
 let trendChartStock = null;
 let trendChartMode = 'line';
 
+// 新增：重設圖表縮放
+function resetChartZoom() {
+    if (trendChartInstance) {
+        delete trendChartInstance.options.scales.x.min;
+        delete trendChartInstance.options.scales.x.max;
+        trendChartInstance.resetZoom();
+    }
+    if (waterLevelTrendChartInstance) {
+        delete waterLevelTrendChartInstance.options.scales.x.min;
+        delete waterLevelTrendChartInstance.options.scales.x.max;
+        waterLevelTrendChartInstance.resetZoom();
+    }
+}
+
+// 新增：圖表縮放同步連動
+function syncChartZoom(sourceChart, targetChart) {
+    if (!sourceChart || !targetChart || !sourceChart.scales.x || !targetChart.scales.x) return;
+    targetChart.options.scales.x.min = sourceChart.scales.x.min;
+    targetChart.options.scales.x.max = sourceChart.scales.x.max;
+    targetChart.update('none');
+}
+
 function setTrendChartMode(mode) {
     trendChartMode = mode === 'candlestick' ? 'candlestick' : 'line';
     document.querySelectorAll('[data-trend-mode]').forEach(button => {
@@ -519,12 +541,25 @@ function renderTrendChart(stock) {
                     labels: { 
                         boxWidth: 12, 
                         font: { size: 10 }, 
-                        // 正確過濾掉 K線範圍與買進、賣出標籤
+                        // 過濾掉 K線範圍與買賣標記
                         filter: item => !['K線範圍', '買進', '賣出'].includes(item.text) 
                     }
                 },
                 tooltip: { enabled: false }, // 關閉原生會遮擋的 tooltip
-                crosshair: { selectedPriceIndex }
+                crosshair: { selectedPriceIndex },
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        onPan: ({chart}) => syncChartZoom(chart, waterLevelTrendChartInstance)
+                    },
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        mode: 'x',
+                        onZoom: ({chart}) => syncChartZoom(chart, waterLevelTrendChartInstance)
+                    }
+                }
             },
             onHover: (event, elements, chart) => {
                 if (elements && elements.length > 0) {
@@ -623,7 +658,7 @@ function renderTrendChart(stock) {
                     borderColor: '#F97316',
                     backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     borderWidth: 2,
-                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0,
+                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0, 
                     fill: true,
                     tension: 0.18,
                     spanGaps: true
@@ -640,7 +675,20 @@ function renderTrendChart(stock) {
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { display: false },
-                tooltip: { enabled: false }
+                tooltip: { enabled: false },
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        onPan: ({chart}) => syncChartZoom(chart, trendChartInstance)
+                    },
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        mode: 'x',
+                        onZoom: ({chart}) => syncChartZoom(chart, trendChartInstance)
+                    }
+                }
             },
             onHover: (event, elements, chart) => {
                 if (elements && elements.length > 0) {
