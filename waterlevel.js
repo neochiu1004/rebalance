@@ -411,6 +411,7 @@ function renderTrendChart(stock) {
         borderWidth: 1.2,
         borderDash: isDashed ? [4, 4] : [],
         pointRadius: 0,
+        pointHoverRadius: 0, // 新增：隱藏 hover 圓點
         fill: false
     });
 
@@ -426,6 +427,7 @@ function renderTrendChart(stock) {
         borderColor: color,
         borderWidth: 1.8,
         pointRadius: 0,
+        pointHoverRadius: 0, // 新增：隱藏 hover 圓點
         spanGaps: false,
         fill: false
     });
@@ -439,7 +441,7 @@ function renderTrendChart(stock) {
         pointBorderColor: '#FFFFFF',
         pointBorderWidth: 2,
         pointRadius: labels.map(itemDate => itemDate === date ? 5 : 0),
-        pointHoverRadius: 7,
+        pointHoverRadius: 0, // 修改：隱藏同一垂直線上的 hover 反饋
         showLine: false,
         spanGaps: false,
         fill: false
@@ -452,6 +454,7 @@ function renderTrendChart(stock) {
         borderColor: trendChartMode === 'candlestick' ? 'rgba(0,0,0,0)' : '#0F172A',
         borderWidth: 2,
         pointRadius: 0,
+        pointHoverRadius: 0, // 新增：原生 Hover 隱藏，交由 crosshairPlugin 畫單一發光點
         fill: false,
         pointHitRadius: 12
     }];
@@ -462,6 +465,7 @@ function renderTrendChart(stock) {
             data: historyData.map(item => getOhlc(item).h),
             borderColor: 'rgba(0,0,0,0)',
             pointRadius: 0,
+            pointHoverRadius: 0, // 新增
             showLine: false,
             fill: false
         });
@@ -470,6 +474,7 @@ function renderTrendChart(stock) {
             data: historyData.map(item => getOhlc(item).l),
             borderColor: 'rgba(0,0,0,0)',
             pointRadius: 0,
+            pointHoverRadius: 0, // 新增
             showLine: false,
             fill: false
         });
@@ -607,6 +612,7 @@ function renderTrendChart(stock) {
         borderWidth: 1,
         borderDash: dashed ? [5, 4] : [],
         pointRadius: 0,
+        pointHoverRadius: 0, // 新增：隱藏 hover 圓點
         fill: false
     });
 
@@ -658,7 +664,8 @@ function renderTrendChart(stock) {
                     borderColor: '#F97316',
                     backgroundColor: 'rgba(249, 115, 22, 0.12)',
                     borderWidth: 2,
-                    pointRadius: context => context.dataIndex === len - 1 ? 0 : 0, 
+                    pointRadius: 0, 
+                    pointHoverRadius: 0, // 新增：隱藏原生圓點
                     fill: true,
                     tension: 0.18,
                     spanGaps: true

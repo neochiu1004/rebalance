@@ -217,7 +217,7 @@
         </div>
     </div>
 
-    <!-- 走勢圖 Modal -->
+    <!-- 走勢圖 Modal (已補齊所有資訊列與區域摘要 ID) -->
     <div id="trend-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
         <div class="bg-white p-6 rounded-2xl shadow-xl max-w-lg w-full mx-4 transform scale-95 transition-transform duration-200 relative max-h-[92vh] overflow-y-auto" id="trend-modal-content">
             <div class="flex justify-between items-center mb-4">
@@ -230,7 +230,7 @@
                 </button>
             </div>
 
-            <!-- 新增：固定位置的數據資訊列，取代原本會遮擋圖表的 Tooltip -->
+            <!-- 固定位置的數據資訊列（包含所有固定面板子 ID） -->
             <div id="fixed-chart-info-bar" class="hidden bg-blue-50/40 border border-blue-100 rounded-xl p-3 mb-4 flex flex-col gap-2 transition-all shadow-sm">
                 <div class="flex justify-between items-center border-b border-blue-100/60 pb-1.5">
                     <span class="text-[12px] font-black text-blue-700 tracking-wider" id="fixed-info-date">請點擊或滑動圖表</span>
@@ -259,14 +259,15 @@
             <div class="relative w-full h-56 sm:h-64 mb-4">
                 <canvas id="trendChart"></canvas>
             </div>
+            
             <div class="flex items-center justify-between mb-1">
-                <div class="flex items-center justify-between mb-1">
-                <div class="text-[11px] font-bold text-slate-500">市場水位（距期間高點）</div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-bold text-slate-500">市場水位（距期間高點）</span>
+                    <span id="trend-water-summary" class="text-[11px] font-black"></span>
+                </div>
                 <div class="flex items-center gap-1.5">
                     <span class="text-[10px] text-slate-500 mr-1">Zoom</span>
-                    <!-- 新增重設按鈕 -->
                     <button type="button" onclick="resetChartZoom()" class="rounded-lg px-2 py-1 text-[10px] font-black bg-blue-100 text-blue-700 active:scale-95">重設</button>
-                    <!-- 原本的區間按鈕 -->
                     <button type="button" data-trend-range="1M" onclick="setTrendRange('1M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">1M</button>
                     <button type="button" data-trend-range="3M" onclick="setTrendRange('3M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">3M</button>
                     <button type="button" data-trend-range="6M" onclick="setTrendRange('6M')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-700">6M</button>
