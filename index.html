@@ -250,14 +250,30 @@
             </div>
 
             <div class="flex items-center justify-between mb-1">
-                <div class="text-[11px] font-bold text-slate-500">股價走勢</div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-bold text-slate-500">股價走勢</span>
+                    
+                    <!-- 新增：Y軸垂直縮放控制項 -->
+                    <div class="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs">
+                        <span class="px-1 text-slate-400 text-[10px]">垂直</span>
+                        <button type="button" onclick="adjustTrendYZoom(-0.2)" class="w-5 h-5 flex items-center justify-center rounded bg-white text-slate-700 font-bold shadow-sm active:scale-95">-</button>
+                        <span id="trend-zoom-val" class="px-1.5 font-mono text-[10px]">100%</span>
+                        <button type="button" onclick="adjustTrendYZoom(0.2)" class="w-5 h-5 flex items-center justify-center rounded bg-white text-slate-700 font-bold shadow-sm active:scale-95">+</button>
+                        <button type="button" onclick="resetTrendYZoom()" class="px-1 text-[10px] text-blue-600 hover:underline">重設</button>
+                    </div>
+                </div>
+
                 <div class="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
                     <button type="button" data-trend-mode="line" onclick="setTrendChartMode('line')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold bg-white text-slate-900 shadow-sm">線圖</button>
                     <button type="button" data-trend-mode="candlestick" onclick="setTrendChartMode('candlestick')" class="rounded-lg px-2.5 py-1 text-[10px] font-bold text-slate-500">K線</button>
                 </div>
             </div>
-            <div class="relative w-full h-56 sm:h-64 mb-4">
-                <canvas id="trendChart"></canvas>
+
+            <!-- 股價走勢圖畫布容器：改為支援內部滾動與動態調高 -->
+            <div id="trend-chart-viewport" class="relative w-full h-56 sm:h-64 mb-4 overflow-y-auto overflow-x-hidden border border-slate-100 rounded-xl">
+                <div id="trend-chart-canvas-container" class="relative w-full h-full min-h-[224px] transition-[height] duration-200">
+                    <canvas id="trendChart"></canvas>
+                </div>
             </div>
             
             <div class="flex items-center justify-between mb-1">

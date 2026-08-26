@@ -3,6 +3,49 @@
 // 版本: v14.7 (Fix Stock Split Filter for Trend Chart & Fibonacci)
 // ==========================================
 
+// 在 waterlevel.js 開頭新增 Y 軸縮放狀態變數
+let currentYScale = 1.0;
+const baseTrendChartHeight = 256; // 基準像素高度
+
+/**
+ * 調整股價走勢圖 Y 軸垂直縮放
+ * @param {number} delta - 縮放增量 (+0.2 / -0.2)
+ */
+function adjustTrendYZoom(delta) {
+    currentYScale = Math.max(0.6, Math.min(3.0, currentYScale + delta));
+    applyYZoom();
+}
+
+/**
+ * 重設垂直縮放比例
+ */
+function resetTrendYZoom() {
+    currentYScale = 1.0;
+    applyYZoom();
+}
+
+/**
+ * 套用縮放結果至畫布容器與 Chart.js
+ */
+function applyYZoom() {
+    const container = document.getElementById('trend-chart-canvas-container');
+    const zoomText = document.getElementById('trend-zoom-val');
+    
+    if (container) {
+        const newHeight = Math.round(baseTrendChartHeight * currentYScale);
+        container.style.height = `${newHeight}px`;
+    }
+    
+    if (zoomText) {
+        zoomText.innerText = `${Math.round(currentYScale * 100)}%`;
+    }
+
+    // 重繪 Chart.js 以符合新高度
+    if (trendChartInstance) {
+        trendChartInstance.resize();
+    }
+}
+
 let editingHpIndex = -1;
 let trendChartInstance = null;
 let waterLevelTrendChartInstance = null;
@@ -265,6 +308,10 @@ function openTrendModal(index) {
     if (!stock) return;
     trendChartStock = stock;
     trendRange = '1Y';
+
+    // 每次開啟 Modal 時重置 Y 軸垂直高度為 100%
+    currentYScale = 1.0;
+    applyYZoom();
 
     const modal = document.getElementById('trend-modal');
     const content = document.getElementById('trend-modal-content');
