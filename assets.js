@@ -126,6 +126,22 @@ function calculateDailyPortfolioHistory() {
         return { date, stockValue, cashValue, totalValue: stockValue + cashValue };
     });
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (rows.length > 0 && rows[rows.length - 1].date < todayStr) {
+        let currentStockValue = 0;
+        (state.stocks || []).forEach(s => {
+            const currentPrice = Number(s.price) || Number(s.costPrice) || 0;
+            currentStockValue += (Number(s.shares) || 0) * currentPrice;
+        });
+        const currentCash = Number(state.cash) || 0;
+        rows.push({
+            date: todayStr,
+            stockValue: currentStockValue,
+            cashValue: currentCash,
+            totalValue: currentStockValue + currentCash
+        });
+    }
+
     let previousTotal = null;
     let cumulativePnl = 0;
     rows.forEach(row => {
@@ -967,6 +983,13 @@ async function fetchLatestPrices() {
                 const quote = await responses[0].json();
                 const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
                 stock.price = latestPrice;
+                stock.intradayQuote = {
+                    date: new Date().toISOString().split('T')[0],
+                    open: quote.openPrice || latestPrice,
+                    high: quote.highPrice || latestPrice,
+                    low: quote.lowPrice || latestPrice,
+                    close: latestPrice
+                };
                 if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate && latestPrice > 0) {
                     stock.costPrice = latestPrice;
                     stock.firstPriceDate = new Date().toISOString().split('T')[0];

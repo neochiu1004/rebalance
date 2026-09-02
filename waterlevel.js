@@ -104,7 +104,33 @@ function updateTrendRangeButtons() {
 }
 
 function getTrendHistory(stock) {
-    const history = Array.isArray(stock.historyData) ? stock.historyData : [];
+    let history = Array.isArray(stock.historyData) ? [...stock.historyData] : [];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (stock.price > 0) {
+        const quote = stock.intradayQuote || {
+            date: todayStr,
+            open: stock.price,
+            high: stock.price,
+            low: stock.price,
+            close: stock.price
+        };
+        const lastItem = history[history.length - 1];
+        if (!lastItem || lastItem.d < quote.date) {
+            history.push({
+                d: quote.date,
+                o: Number(quote.open),
+                h: Number(quote.high),
+                l: Number(quote.low),
+                c: Number(quote.close)
+            });
+        } else if (lastItem && lastItem.d === quote.date) {
+            lastItem.c = Number(quote.close);
+            if (quote.high > lastItem.h) lastItem.h = Number(quote.high);
+            if (quote.low < lastItem.l) lastItem.l = Number(quote.low);
+        }
+    }
+
     if (trendRange === '1Y' || history.length === 0) return history;
     const days = { '1M': 31, '3M': 93, '6M': 186 }[trendRange] || 365;
     const lastDate = new Date(history[history.length - 1].d);
