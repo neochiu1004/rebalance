@@ -604,6 +604,18 @@ function renderTrendChart(stock) {
         updateFixedInfoBar(len - 1);
     }
 
+    window.selectLatestTrendPoint = () => {
+        if (len > 0 && trendChartInstance) {
+            selectedPriceIndex.value = len - 1;
+            updateFixedInfoBar(len - 1);
+            trendChartInstance.draw();
+            if (waterLevelTrendChartInstance) {
+                selectedWaterIndex.value = len - 1;
+                waterLevelTrendChartInstance.draw();
+            }
+        }
+    };
+
     trendChartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
@@ -611,6 +623,9 @@ function renderTrendChart(stock) {
             responsive: true,
             maintainAspectRatio: false,
             animation: false,
+            layout: {
+                padding: { right: 20 }
+            },
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: {
@@ -655,6 +670,7 @@ function renderTrendChart(stock) {
             },
             scales: {
                 x: {
+                    offset: true,
                     ticks: { maxTicksLimit: 6, font: { size: 9 } },
                     grid: { display: false }
                 },
@@ -782,8 +798,12 @@ function renderTrendChart(stock) {
                     chart.draw();
                 }
             },
+            layout: {
+                padding: { right: 20 }
+            },
             scales: {
                 x: {
+                    offset: true,
                     ticks: { maxTicksLimit: 6, font: { size: 9 } },
                     grid: { display: false }
                 },

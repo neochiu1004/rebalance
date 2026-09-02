@@ -206,13 +206,16 @@ function renderDailyPnlChart(rows) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { right: 20 }
+            },
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { labels: { boxWidth: 10, font: { size: 10 } } },
                 tooltip: { callbacks: { label: context => `${context.dataset.label}: NT$${fmt(context.parsed.y)}` } }
             },
             scales: {
-                x: { ticks: { maxTicksLimit: 6, font: { size: 9 } }, grid: { display: false } },
+                x: { offset: true, ticks: { maxTicksLimit: 6, font: { size: 9 } }, grid: { display: false } },
                 y: { ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } },
                 cumulative: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } }
             }
