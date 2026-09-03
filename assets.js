@@ -154,6 +154,43 @@ function calculateDailyPortfolioHistory() {
     return rows;
 }
 
+function resetDailyPnlZoom() {
+    if (!dailyPnlChart) return;
+    if (dailyPnlChart.options && dailyPnlChart.options.scales && dailyPnlChart.options.scales.x) {
+        dailyPnlChart.options.scales.x.min = undefined;
+        dailyPnlChart.options.scales.x.max = undefined;
+    }
+    if (typeof dailyPnlChart.resetZoom === 'function') {
+        dailyPnlChart.resetZoom('none');
+    }
+    dailyPnlChart.update();
+}
+
+function zoomWindowDailyPnl(ratio = 0.5) {
+    if (!dailyPnlChart || !dailyPnlChart.data.labels.length) return;
+    const total = dailyPnlChart.data.labels.length;
+    const windowSize = Math.max(5, Math.round(total * ratio));
+    const scrubber = document.getElementById('daily-pnl-scrubber');
+    const currentCenter = scrubber ? parseInt(scrubber.value, 10) : total - 1;
+
+    let min = Math.max(0, currentCenter - Math.floor(windowSize / 2));
+    let max = min + windowSize;
+    if (max >= total) {
+        max = total - 1;
+        min = Math.max(0, max - windowSize);
+    }
+
+    if (typeof dailyPnlChart.zoomScale === 'function') {
+        dailyPnlChart.zoomScale('x', {min, max}, 'none');
+    } else {
+        if (dailyPnlChart.options && dailyPnlChart.options.scales && dailyPnlChart.options.scales.x) {
+            dailyPnlChart.options.scales.x.min = min;
+            dailyPnlChart.options.scales.x.max = max;
+        }
+        dailyPnlChart.update('none');
+    }
+}
+
 function renderDailyPnlChart(rows) {
     const section = document.getElementById('daily-pnl-section');
     const summary = document.getElementById('daily-pnl-summary');

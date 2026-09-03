@@ -53,25 +53,27 @@ let trendRange = '1Y';
 let trendChartStock = null;
 let trendChartMode = 'line';
 
-// 新增：重設圖表縮放
+// 新增：重設圖表縮放（徹底解除 min/max 並強制重繪）
 function resetChartZoom() {
-    if (trendChartInstance) {
-        delete trendChartInstance.options.scales.x.min;
-        delete trendChartInstance.options.scales.x.max;
-        trendChartInstance.resetZoom();
-    }
-    if (waterLevelTrendChartInstance) {
-        delete waterLevelTrendChartInstance.options.scales.x.min;
-        delete waterLevelTrendChartInstance.options.scales.x.max;
-        waterLevelTrendChartInstance.resetZoom();
-    }
+    [trendChartInstance, waterLevelTrendChartInstance].forEach(chart => {
+        if (!chart) return;
+        if (chart.options && chart.options.scales && chart.options.scales.x) {
+            chart.options.scales.x.min = undefined;
+            chart.options.scales.x.max = undefined;
+        }
+        if (typeof chart.resetZoom === 'function') {
+            chart.resetZoom('none');
+        } else {
+            chart.update();
+        }
+    });
 }
 
 // 局部放大視窗：以當前選定點為中心按比例縮小 X 軸可視範圍，解決日期密集點選問題
 function zoomWindowTrend(ratio = 0.5) {
     if (!trendChartInstance || !trendChartInstance.data.labels.length) return;
     const total = trendChartInstance.data.labels.length;
-    const windowSize = Math.max(7, Math.round(total * ratio));
+    const windowSize = Math.max(5, Math.round(total * ratio));
     const scrubber = document.getElementById('trend-scrubber');
     const currentCenter = scrubber ? parseInt(scrubber.value, 10) : total - 1;
     
@@ -84,9 +86,15 @@ function zoomWindowTrend(ratio = 0.5) {
     
     [trendChartInstance, waterLevelTrendChartInstance].forEach(chart => {
         if (!chart) return;
-        chart.options.scales.x.min = min;
-        chart.options.scales.x.max = max;
-        chart.update('none');
+        if (typeof chart.zoomScale === 'function') {
+            chart.zoomScale('x', {min, max}, 'none');
+        } else {
+            if (chart.options && chart.options.scales && chart.options.scales.x) {
+                chart.options.scales.x.min = min;
+                chart.options.scales.x.max = max;
+            }
+            chart.update('none');
+        }
     });
 }
 
@@ -167,11 +175,13 @@ function getOhlc(item) {
     const open = Number(item.o);
     const high = Number(item.h);
     const low = Number(item.l);
+    const volume = Number(item.v);
     return {
         o: Number.isFinite(open) ? open : close,
         h: Number.isFinite(high) ? high : close,
         l: Number.isFinite(low) ? low : close,
-        c: close
+        c: close,
+        v: Number.isFinite(volume) ? volume : 0
     };
 }
 
@@ -461,9 +471,14 @@ function renderTrendChart(stock) {
         const item = historyData[index];
         const ohlc = item ? getOhlc(item) : { h: null, l: null, c: price };
         
+        const volumeEl = document.getElementById('fixed-info-volume');
         highEl.textContent = Number.isFinite(ohlc.h) ? fmtPrice(ohlc.h) : '--';
         lowEl.textContent = Number.isFinite(ohlc.l) ? fmtPrice(ohlc.l) : '--';
         closeEl.textContent = Number.isFinite(ohlc.c) ? fmtPrice(ohlc.c) : '--';
+        if (volumeEl) {
+            const vol = ohlc.v;
+            volumeEl.textContent = vol > 0 ? `${fmt(vol >= 1000 ? Math.round(vol / 1000) : vol)} ${vol >= 1000 ? '張' : '股'}` : '--';
+        }
         
         if (hp > 0 && price > 0) {
             const dropPct = ((price / hp) - 1) * 100;
@@ -543,17 +558,38 @@ function renderTrendChart(stock) {
         fill: false
     });
 
+    const volumes = historyData.map(item => getOhlc(item).v);
+    const maxVolume = Math.max(1, ...volumes);
+
     const selectedPriceIndex = { value: null };
-    const datasets = [{
-        label: '收盤價',
-        data: prices,
-        borderColor: trendChartMode === 'candlestick' ? 'rgba(0,0,0,0)' : '#0F172A',
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 0, // 新增：原生 Hover 隱藏，交由 crosshairPlugin 畫單一發光點
-        fill: false,
-        pointHitRadius: 12
-    }];
+    const datasets = [
+        {
+            type: 'bar',
+            label: '成交量',
+            data: volumes,
+            backgroundColor: historyData.map(item => {
+                const candle = getOhlc(item);
+                return candle.c >= candle.o ? 'rgba(22, 163, 74, 0.35)' : 'rgba(220, 38, 38, 0.35)';
+            }),
+            yAxisID: 'volumeAxis',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            barPercentage: 0.8,
+            order: 99
+        },
+        {
+            type: 'line',
+            label: '收盤價',
+            data: prices,
+            borderColor: trendChartMode === 'candlestick' ? 'rgba(0,0,0,0)' : '#0F172A',
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            fill: false,
+            pointHitRadius: 12,
+            yAxisID: 'y'
+        }
+    ];
 
     if (trendChartMode === 'candlestick') {
         datasets.push({
@@ -689,8 +725,8 @@ function renderTrendChart(stock) {
                     labels: { 
                         boxWidth: 12, 
                         font: { size: 10 }, 
-                        // 過濾掉 K線範圍與買賣標記
-                        filter: item => !['K線範圍', '買進', '賣出'].includes(item.text) 
+                        // 過濾掉 K線範圍、成交量與買賣標記
+                        filter: item => !['K線範圍', '買進', '賣出', '成交量'].includes(item.text) 
                     }
                 },
                 tooltip: { enabled: false }, // 關閉原生會遮擋的 tooltip
@@ -730,8 +766,16 @@ function renderTrendChart(stock) {
                     grid: { display: false }
                 },
                 y: {
+                    position: 'left',
                     grid: { color: '#F1F5F9' },
                     ticks: { font: { size: 10 }, callback: value => `@${value}` }
+                },
+                volumeAxis: {
+                    position: 'right',
+                    min: 0,
+                    max: maxVolume * 3.8, // 壓制在底部約 25% 高度，不與價格折線重疊
+                    grid: { display: false },
+                    ticks: { display: false }
                 }
             }
         },
@@ -935,7 +979,8 @@ async function fetchFinmindHighLow() {
                     o: Number(day.open),
                     h: Number(day.max),
                     l: Number(day.min),
-                    c: Number(day.close)
+                    c: Number(day.close),
+                    v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
                 }));
                 const highPoint = validData.reduce((best, day) => Number(day.max) > best.price ? { price: Number(day.max), date: day.date } : best, { price: -Infinity, date: '' });
                 const lowPoint = validData.reduce((best, day) => Number(day.min) < best.price ? { price: Number(day.min), date: day.date } : best, { price: Infinity, date: '' });
@@ -1041,7 +1086,8 @@ async function autoFetchHighLow() {
             o: Number(day.open),
             h: Number(day.max),
             l: Number(day.min),
-            c: Number(day.close)
+            c: Number(day.close),
+            v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
         }));
 
         if (maxPrice !== -Infinity && minPrice !== Infinity) {
