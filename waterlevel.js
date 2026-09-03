@@ -67,6 +67,29 @@ function resetChartZoom() {
     }
 }
 
+// 局部放大視窗：以當前選定點為中心按比例縮小 X 軸可視範圍，解決日期密集點選問題
+function zoomWindowTrend(ratio = 0.5) {
+    if (!trendChartInstance || !trendChartInstance.data.labels.length) return;
+    const total = trendChartInstance.data.labels.length;
+    const windowSize = Math.max(7, Math.round(total * ratio));
+    const scrubber = document.getElementById('trend-scrubber');
+    const currentCenter = scrubber ? parseInt(scrubber.value, 10) : total - 1;
+    
+    let min = Math.max(0, currentCenter - Math.floor(windowSize / 2));
+    let max = min + windowSize;
+    if (max >= total) {
+        max = total - 1;
+        min = Math.max(0, max - windowSize);
+    }
+    
+    [trendChartInstance, waterLevelTrendChartInstance].forEach(chart => {
+        if (!chart) return;
+        chart.options.scales.x.min = min;
+        chart.options.scales.x.max = max;
+        chart.update('none');
+    });
+}
+
 // 新增：圖表縮放同步連動
 function syncChartZoom(sourceChart, targetChart) {
     if (!sourceChart || !targetChart || !sourceChart.scales.x || !targetChart.scales.x) return;
@@ -598,19 +621,51 @@ function renderTrendChart(stock) {
     const crosshairPlugin = makeCrosshairPlugin(selectedPriceIndex);
     const candlePlugin = makeCandlestickPlugin(historyData);
 
+    const trendScrubber = document.getElementById('trend-scrubber');
+    const trendScrubberDate = document.getElementById('trend-scrubber-date');
+
+    const syncScrubberUI = (index) => {
+        if (trendScrubber && index !== null && index >= 0) {
+            trendScrubber.value = index;
+            if (trendScrubberDate && labels[index]) {
+                trendScrubberDate.textContent = labels[index].slice(5);
+            }
+        }
+    };
+
+    window.onTrendScrubberInput = (val) => {
+        const index = parseInt(val, 10);
+        if (index >= 0 && index < len) {
+            selectedPriceIndex.value = index;
+            selectedWaterIndex.value = index;
+            updateFixedInfoBar(index);
+            syncScrubberUI(index);
+            if (trendChartInstance) trendChartInstance.draw();
+            if (waterLevelTrendChartInstance) waterLevelTrendChartInstance.draw();
+        }
+    };
+
+    if (trendScrubber) {
+        trendScrubber.min = 0;
+        trendScrubber.max = len > 0 ? len - 1 : 0;
+        trendScrubber.value = len > 0 ? len - 1 : 0;
+    }
+
     // 預設帶入最後一筆資料到固定面板
     if (len > 0) {
         selectedPriceIndex.value = len - 1;
         updateFixedInfoBar(len - 1);
+        syncScrubberUI(len - 1);
     }
 
     window.selectLatestTrendPoint = () => {
         if (len > 0 && trendChartInstance) {
             selectedPriceIndex.value = len - 1;
+            selectedWaterIndex.value = len - 1;
             updateFixedInfoBar(len - 1);
+            syncScrubberUI(len - 1);
             trendChartInstance.draw();
             if (waterLevelTrendChartInstance) {
-                selectedWaterIndex.value = len - 1;
                 waterLevelTrendChartInstance.draw();
             }
         }

@@ -177,6 +177,20 @@ function renderDailyPnlChart(rows) {
         <div><div class="text-[10px] font-bold text-slate-400">最新每日盈虧</div><div class="text-lg font-black ${pnlClass}">${latest.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.dailyPnl))}</div></div>
         <div class="text-right"><div class="text-[10px] font-bold text-slate-400">累計盈虧</div><div class="text-lg font-black ${cumulativeClass}">${latest.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.cumulativePnl))}</div></div>`;
 
+    const scrubber = document.getElementById('daily-pnl-scrubber');
+    const scrubberDate = document.getElementById('daily-pnl-scrubber-date');
+    const updateSummaryAt = (idx) => {
+        const item = displayRows[idx] || latest;
+        const pnlCls = item.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+        const cumCls = item.cumulativePnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+        summary.innerHTML = `
+            <div><div class="text-[10px] font-bold text-slate-400">${item.date} 盈虧</div><div class="text-lg font-black ${pnlCls}">${item.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(item.dailyPnl))}</div></div>
+            <div class="text-right"><div class="text-[10px] font-bold text-slate-400">累計盈虧</div><div class="text-lg font-black ${cumCls}">${item.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(item.cumulativePnl))}</div></div>`;
+        if (scrubberDate) scrubberDate.textContent = item.date.slice(5);
+    };
+
+    let selectedDailyPnlIndex = displayRows.length - 1;
+
     dailyPnlChart = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
@@ -188,7 +202,8 @@ function renderDailyPnlChart(rows) {
                     borderColor: '#0F172A',
                     backgroundColor: 'rgba(15, 23, 42, 0.08)',
                     borderWidth: 1.8,
-                    pointRadius: 0,
+                    pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
+                    pointBackgroundColor: '#0F172A',
                     tension: 0.25,
                     fill: true
                 },
@@ -197,7 +212,8 @@ function renderDailyPnlChart(rows) {
                     data: displayRows.map(row => row.cumulativePnl),
                     borderColor: '#2563EB',
                     borderWidth: 2,
-                    pointRadius: 0,
+                    pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
+                    pointBackgroundColor: '#2563EB',
                     tension: 0.25,
                     yAxisID: 'cumulative'
                 }
@@ -221,6 +237,20 @@ function renderDailyPnlChart(rows) {
             }
         }
     });
+
+    if (scrubber) {
+        scrubber.min = 0;
+        scrubber.max = displayRows.length - 1;
+        scrubber.value = displayRows.length - 1;
+        scrubber.oninput = (e) => {
+            const idx = parseInt(e.target.value, 10);
+            selectedDailyPnlIndex = idx;
+            updateSummaryAt(idx);
+            dailyPnlChart.update('none');
+        };
+    }
+    updateSummaryAt(displayRows.length - 1);
+
     const source = document.getElementById('daily-pnl-source');
     if (source) source.textContent = `資料截至 ${latest.date}（每日手動更新資料最後一筆）`;
 }

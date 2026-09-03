@@ -295,6 +295,22 @@
             <div class="relative w-full h-52 sm:h-60">
                 <canvas id="waterLevelTrendChart"></canvas>
             </div>
+            <!-- 走勢圖獨立拖曳選擇與局部縮放列 -->
+            <div class="bg-slate-50 p-2 rounded-xl border border-slate-200 mt-2 space-y-1.5">
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold text-slate-500 shrink-0">👆 獨立拖曳</span>
+                    <input type="range" id="trend-scrubber" min="0" max="0" value="0" oninput="onTrendScrubberInput(this.value)" class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    <span id="trend-scrubber-date" class="text-[10px] font-mono font-bold text-blue-700 shrink-0 min-w-[50px] text-right">--</span>
+                </div>
+                <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
+                    <span class="font-bold text-slate-400">🔍 局部放大視窗</span>
+                    <div class="flex items-center gap-1">
+                        <button type="button" onclick="zoomWindowTrend(0.5)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">放大 2x</button>
+                        <button type="button" onclick="zoomWindowTrend(0.25)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">放大 4x</button>
+                        <button type="button" onclick="resetChartZoom()" class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold active:scale-95">還原全區間</button>
+                    </div>
+                </div>
+            </div>
             <div class="flex justify-center gap-4 text-[10px] text-slate-500 mt-2">
                 <span><i class="inline-block w-5 h-3 rounded-sm bg-emerald-100 align-middle mr-1"></i>正常區間（-10% 以內）</span>
                 <span><i class="inline-block w-5 h-3 rounded-sm bg-amber-100 align-middle mr-1"></i>觀察區間（-10%～-20%）</span>
@@ -521,6 +537,12 @@
                             <div id="daily-pnl-summary" class="flex gap-5"></div>
                         </div>
                         <div class="relative h-56"><canvas id="daily-pnl-chart"></canvas></div>
+                        <!-- 獨立拖曳選擇區 -->
+                        <div class="mt-3 pt-2 border-t border-slate-100 flex items-center gap-2">
+                            <span class="text-[10px] font-bold text-slate-400 shrink-0">👆 拖曳選日</span>
+                            <input type="range" id="daily-pnl-scrubber" min="0" max="0" value="0" class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900">
+                            <span id="daily-pnl-scrubber-date" class="text-[10px] font-mono font-bold text-slate-600 shrink-0 min-w-[50px] text-right">--</span>
+                        </div>
                     </div>
 
                     <div class="flex justify-between items-end mb-3 px-1">
