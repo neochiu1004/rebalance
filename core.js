@@ -38,6 +38,17 @@ function calculateTradingCost({ type, price, shares, stock = {}, feeOverride = n
 // 不改寫 stock.paidCost，避免每次報價更新都把預估賣出費用重複累加。
 function calculateAllInCost(stock = {}, currentPrice = null) {
     const shares = Number(stock.shares) || 0;
+    // 邊界防護：庫存為 0 時強制所有成本與均價歸零，避免殘留歷史付費
+    if (shares <= 0) {
+        return {
+            buyCost: 0,
+            sellFee: 0,
+            sellTax: 0,
+            totalCost: 0,
+            averageCost: 0
+        };
+    }
+
     const buyPrice = Number(stock.costPrice) || Number(stock.price) || 0;
     const buyAmount = shares * buyPrice;
     const fallbackBuyCost = buyAmount > 0
@@ -47,7 +58,7 @@ function calculateAllInCost(stock = {}, currentPrice = null) {
         ? Number(stock.paidCost)
         : fallbackBuyCost;
     const sellPrice = Number(currentPrice) || Number(stock.price) || buyPrice;
-    const sellCost = shares > 0 && sellPrice > 0
+    const sellCost = sellPrice > 0
         ? calculateTradingCost({ type: 'sell', price: sellPrice, shares, stock })
         : { fee: 0, tax: 0 };
     const totalCost = buyCost + sellCost.fee + sellCost.tax;
@@ -57,7 +68,7 @@ function calculateAllInCost(stock = {}, currentPrice = null) {
         sellFee: sellCost.fee,
         sellTax: sellCost.tax,
         totalCost,
-        averageCost: shares > 0 ? totalCost / shares : 0
+        averageCost: totalCost / shares
     };
 }
 
@@ -146,4 +157,41 @@ function calculateTrendSignal(historyData = []) {
                 : '中性';
     }
     return { current, ma20, ma60, signal };
+}
+
+// 依歷史交易明細重推單檔持股股數、付出成本與均價（含除零防呆與精度防護）
+function recalculateStockFromTransactions(stock) {
+    if (!stock) return;
+    const transactions = Array.isArray(stock.transactions) ? [...stock.transactions] : [];
+    // 依日期升冪重演帳本
+    transactions.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+
+    let currentShares = 0;
+    let currentPaidCost = 0;
+
+    transactions.forEach(t => {
+        const type = (t.type === 'buy' || t.type === '買進') ? 'buy' : 'sell';
+        const shares = Math.max(0, parseInt(t.shares, 10) || 0);
+        const price = Math.max(0, parseFloat(t.price) || 0);
+        const cost = calculateTradingCost({
+            type,
+            price,
+            shares,
+            stock,
+            feeOverride: Number.isFinite(Number(t.fee)) ? Number(t.fee) : null
+        });
+
+        if (type === 'buy') {
+            currentShares += shares;
+            currentPaidCost += cost.netAmount;
+        } else {
+            const avgBuyCost = currentShares > 0 ? currentPaidCost / currentShares : 0;
+            currentShares = Math.max(0, currentShares - shares);
+            currentPaidCost = Math.max(0, currentPaidCost - (avgBuyCost * shares));
+        }
+    });
+
+    stock.shares = currentShares;
+    stock.paidCost = Math.round(currentPaidCost);
+    stock.costPrice = currentShares > 0 ? (currentPaidCost / currentShares) : 0;
 }

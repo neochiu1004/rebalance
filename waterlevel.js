@@ -945,10 +945,18 @@ async function fetchFinmindHighLow() {
     lastYear.setDate(today.getDate() - 365);
     const startDateStr = lastYear.toISOString().split('T')[0];
 
+    const delay = (ms) => new Promise(res => setTimeout(res, ms));
+    const todayStr = today.toISOString().split('T')[0];
+
     try {
         for (let i = 0; i < state.stocks.length; i++) {
             const stock = state.stocks[i];
             if (!stock.symbol) continue;
+
+            // 快取判斷：若當日已更新過歷史資料且有高低點紀錄，略過請求以節省 Token 額度
+            if (stock.historyFetchedDate === todayStr && stock.highPrice > 0) {
+                continue;
+            }
 
             const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
             
@@ -992,9 +1000,11 @@ async function fetchFinmindHighLow() {
                     stock.lowDate = lowPoint.date;
                     stock.historyData = historyData;
                     stock.waterLevelSource = 'finmind';
+                    stock.historyFetchedDate = todayStr; // 標註今日已抓取
                     updatedCount++;
                 }
             }
+            await delay(200); // 逐筆間隔 200ms 防抖，維護 API 連線穩定度
         }
 
         if (updatedCount > 0) {

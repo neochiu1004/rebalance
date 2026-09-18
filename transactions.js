@@ -235,8 +235,36 @@ function deleteTransaction(stockIndex, transId) {
 function executeDeleteTrans(stockIndex, transId) {
     const stock = state.stocks[stockIndex];
     if (!stock || !stock.transactions) return;
-    stock.transactions = stock.transactions.filter(t => t.id !== transId);
+
+    const targetIndex = stock.transactions.findIndex(t => t.id === transId);
+    if (targetIndex === -1) return;
+
+    const targetTrans = stock.transactions[targetIndex];
+    const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
+    const price = Math.max(0, parseFloat(targetTrans.price) || 0);
+    const shares = Math.max(0, parseInt(targetTrans.shares, 10) || 0);
+    const cost = calculateTradingCost({
+        type,
+        price,
+        shares,
+        stock,
+        feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
+    });
+
+    // 回滾現金餘額：原買進為扣款，刪除需補回；原賣出為入帳，刪除需扣回
+    if (type === 'buy') {
+        state.cash = (Number(state.cash) || 0) + cost.netAmount;
+    } else {
+        state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
+    }
+
+    stock.transactions.splice(targetIndex, 1);
+    recalculateStockFromTransactions(stock);
+
     saveState();
     renderTransactionList(stockIndex);
-    if (typeof showToast === 'function') showToast('已刪除該筆交易紀錄');
+    renderStockDetailContent();
+    if (typeof updateAllData === 'function') updateAllData();
+    if (typeof renderGlobalTradeHistory === 'function') renderGlobalTradeHistory();
+    if (typeof showToast === 'function') showToast('已刪除交易紀錄並完成現金與持股回滾');
 }

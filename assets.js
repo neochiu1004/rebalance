@@ -19,7 +19,7 @@ const symbolMap = {
     '欣興': '3037'
 };
 
-// 將交易簿彙整成總覽可讀的成本明細。
+// 將交易簿彙整成總覽可讀的成本明細（統一依賴 core.js 之 calculateTradingCost 計算或讀取標準欄位）
 function calculateTransactionBreakdown(stock = {}) {
     const breakdown = {
         buyAmount: 0,
@@ -33,19 +33,29 @@ function calculateTransactionBreakdown(stock = {}) {
     };
 
     (Array.isArray(stock.transactions) ? stock.transactions : []).forEach(transaction => {
-        const amount = (Number(transaction.price) || 0) * (Number(transaction.shares) || 0);
-        const fee = Number(transaction.fee) || 0;
-        const tax = Number(transaction.tax) || 0;
-        if (transaction.type === 'buy') {
-            breakdown.buyAmount += amount;
-            breakdown.buyFee += fee;
-            breakdown.buyTax += tax;
-            breakdown.buyShares += Number(transaction.shares) || 0;
-        } else if (transaction.type === 'sell') {
-            breakdown.sellAmount += amount;
-            breakdown.sellFee += fee;
-            breakdown.sellTax += tax;
-            breakdown.sellShares += Number(transaction.shares) || 0;
+        const type = getTransactionType(transaction);
+        const shares = Math.max(0, parseInt(transaction.shares, 10) || 0);
+        const price = Math.max(0, parseFloat(transaction.price) || 0);
+        const cost = typeof calculateTradingCost === 'function'
+            ? calculateTradingCost({
+                type,
+                price,
+                shares,
+                stock,
+                feeOverride: Number.isFinite(Number(transaction.fee)) ? Number(transaction.fee) : null
+            })
+            : { amount: price * shares, fee: Number(transaction.fee) || 0, tax: Number(transaction.tax) || 0, netAmount: 0 };
+
+        if (type === 'buy') {
+            breakdown.buyAmount += cost.amount;
+            breakdown.buyFee += cost.fee;
+            breakdown.buyTax += cost.tax;
+            breakdown.buyShares += shares;
+        } else {
+            breakdown.sellAmount += cost.amount;
+            breakdown.sellFee += cost.fee;
+            breakdown.sellTax += cost.tax;
+            breakdown.sellShares += shares;
         }
     });
 
@@ -871,32 +881,27 @@ function quickSelectStock(indexStr) {
 }
 
 function executeMergeOrAdd(newStock) {
-    let existing = state.stocks.find(s => s.symbol && s.symbol === newStock.symbol);
-    if (existing) {
-        const oldShares = Number(existing.shares) || 0;
-        const newShares = Number(newStock.shares) || 0;
-        const totalShares = oldShares + newShares;
-
-        let oldPaidCost = existing.paidCost;
-        if (oldPaidCost === undefined) {
-            const oldBuyVal = Math.round(oldShares * (Number(existing.costPrice) || Number(existing.price) || 0));
-            oldPaidCost = oldBuyVal + calculateBrokerageFee(oldBuyVal);
+    let targetStock = state.stocks.find(s => s.symbol && s.symbol.toUpperCase() === (newStock.symbol || '').toUpperCase());
+    if (targetStock) {
+        if (!targetStock.name && newStock.name) targetStock.name = newStock.name;
+        if (newStock.price) targetStock.price = newStock.price;
+        if (!targetStock.transactions) targetStock.transactions = [];
+        if (Array.isArray(newStock.transactions)) {
+            targetStock.transactions.push(...newStock.transactions);
         }
-
-        const addedPaidCost = Number(newStock.paidCost) || 0;
-        existing.paidCost = Number(oldPaidCost) + addedPaidCost;
-        if (totalShares > 0) {
-            existing.costPrice = existing.paidCost / totalShares;
-        }
-        existing.shares = totalShares;
-        if (!existing.name && newStock.name) existing.name = newStock.name;
     } else {
-        if (newStock.targetWeight === undefined) {
-            let isEtf = typeof isETFOrLeveraged === 'function' ? isETFOrLeveraged(newStock.symbol, newStock.name) : false;
-            newStock.targetWeight = isEtf ? 1 : 0;
-            newStock.isLocked = !isEtf; 
+        targetStock = newStock;
+        if (targetStock.targetWeight === undefined) {
+            let isEtf = typeof isETFOrLeveraged === 'function' ? isETFOrLeveraged(targetStock.symbol, targetStock.name) : false;
+            targetStock.targetWeight = isEtf ? 1 : 0;
+            targetStock.isLocked = !isEtf; 
         }
-        state.stocks.push(newStock);
+        state.stocks.push(targetStock);
+    }
+
+    // 由交易簿全量回推股數、成本與均價（SSOT 機制）
+    if (typeof recalculateStockFromTransactions === 'function') {
+        recalculateStockFromTransactions(targetStock);
     }
 
     if (typeof balanceWeights === 'function') balanceWeights(); 
@@ -1036,46 +1041,66 @@ async function fetchLatestPrices() {
         lastUpdateEl.previousElementSibling.classList.add('bg-amber-500');
     }
 
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const delay = (ms) => new Promise(res => setTimeout(res, ms));
     let updated = false;
-    for (let stock of state.stocks) {
-        if (!stock.symbol) continue;
-        try {
-            const fetches = [
-                fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${stock.symbol}`, { headers: { 'X-API-KEY': state.apiKey } })
-            ];
-            const needsName = (!stock.name || stock.name === stock.symbol);
-            if (needsName) {
-                fetches.push(fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${stock.symbol}`, { headers: { 'X-API-KEY': state.apiKey } }));
+
+    // 將股票以 3 檔為單位分批並行，並在批次間加入防護延遲
+    const batchSize = 3;
+    for (let i = 0; i < state.stocks.length; i += batchSize) {
+        const batch = state.stocks.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (stock) => {
+            if (!stock.symbol) return;
+
+            // 快取判斷：若 3 分鐘內已更新且有今日資料，略過重複查詢
+            if (stock.lastFetchedAt && (now.getTime() - stock.lastFetchedAt < 180000) && stock.price > 0) {
+                return;
             }
 
-            const responses = await Promise.all(fetches);
-            if (responses[0].ok) {
-                const quote = await responses[0].json();
-                const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
-                stock.price = latestPrice;
-                stock.intradayQuote = {
-                    date: new Date().toISOString().split('T')[0],
-                    open: quote.openPrice || latestPrice,
-                    high: quote.highPrice || latestPrice,
-                    low: quote.lowPrice || latestPrice,
-                    close: latestPrice
-                };
-                if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate && latestPrice > 0) {
-                    stock.costPrice = latestPrice;
-                    stock.firstPriceDate = new Date().toISOString().split('T')[0];
+            try {
+                const fetches = [
+                    fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${stock.symbol}`, { headers: { 'X-API-KEY': state.apiKey } })
+                ];
+                const needsName = (!stock.name || stock.name === stock.symbol);
+                if (needsName) {
+                    fetches.push(fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${stock.symbol}`, { headers: { 'X-API-KEY': state.apiKey } }));
                 }
-                stock.changePercent = quote.changePercent || 0; 
-                updated = true;
-            }
-            if (needsName && responses[1] && responses[1].ok) {
-                const ticker = await responses[1].json();
-                if (ticker.name) {
-                    stock.name = ticker.name;
+
+                const responses = await Promise.all(fetches);
+                if (responses[0] && responses[0].ok) {
+                    const quote = await responses[0].json();
+                    const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
+                    stock.price = latestPrice;
+                    stock.lastFetchedAt = now.getTime();
+                    stock.intradayQuote = {
+                        date: todayStr,
+                        open: quote.openPrice || latestPrice,
+                        high: quote.highPrice || latestPrice,
+                        low: quote.lowPrice || latestPrice,
+                        close: latestPrice
+                    };
+                    if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate && latestPrice > 0) {
+                        stock.costPrice = latestPrice;
+                        stock.firstPriceDate = todayStr;
+                    }
+                    stock.changePercent = quote.changePercent || 0; 
                     updated = true;
                 }
+                if (needsName && responses[1] && responses[1].ok) {
+                    const ticker = await responses[1].json();
+                    if (ticker.name) {
+                        stock.name = ticker.name;
+                        updated = true;
+                    }
+                }
+            } catch (err) {
+                console.log(`Failed to fetch ${stock.symbol}`, err);
             }
-        } catch (err) {
-            console.log(`Failed to fetch ${stock.symbol}`, err);
+        }));
+
+        if (i + batchSize < state.stocks.length) {
+            await delay(250); // 批次間延遲 250ms 防止觸發 API 頻率限制
         }
     }
 
@@ -1289,82 +1314,38 @@ function handleCSVUpload(e) {
     reader.readAsText(file);
 }
 
-// ==========================================
-// MCE SMART PATCH - assets.js (CSV 寫入引擎升級)
-// ==========================================
 
-function processCSVRow(row) {
-    const { symbol, name, shares, costPrice, date, type } = row;
-    
-    let existing = state.stocks.find(s => s.symbol === symbol);
-    if (!existing) {
-        existing = { symbol, name, shares: 0, costPrice: 0, transactions: [] };
-        state.stocks.push(existing);
-    }
-    
-    if (!existing.transactions) existing.transactions = [];
-
-    const txShares = parseInt(shares) || 0;
-    const txPrice = parseFloat(costPrice) || 0;
-    const txType = (type === 'buy' || type === '買進') ? 'buy' : 'sell';
-    
-    const cost = calculateTradingCost({ type: txType, price: txPrice, shares: txShares, stock: { symbol, name } });
-
-    existing.transactions.push({
-        id: 'csv_' + Date.now() + Math.random().toString(36).substr(2, 9),
-        type: txType,
-        price: txPrice,
-        shares: txShares,
-        fee: cost.fee,
-        tax: cost.tax,
-        netAmount: cost.netAmount,
-        date: date || new Date().toISOString().split('T')[0],
-        note: 'CSV 批次匯入',
-        isImported: true
-    });
-
-    if (txType === 'buy') {
-        const totalCost = cost.netAmount;
-        const prevPaidSum = (existing.costPrice || 0) * (existing.shares || 0);
-        existing.shares += txShares;
-        existing.costPrice = existing.shares > 0 ? (prevPaidSum + totalCost) / existing.shares : 0;
-    } else {
-        existing.shares -= txShares;
-    }
-    
-    saveState();
-}
 
 // ==========================================
-// 計算持股預估賣出成本（手續費與證交稅）
+// 計算持股預估賣出成本（統一委派至 calculateTradingCost）
 // ==========================================
 function calculateEstimatedSellCost(stock, currentPrice) {
-  const shares = stock.shares || 0;
-  const price = currentPrice || stock.price || stock.costPrice || 0;
-  if (shares <= 0 || !price) return { fee: 0, tax: 0, netValue: 0 };
+  const shares = Number(stock?.shares) || 0;
+  const price = Number(currentPrice) || Number(stock?.price) || Number(stock?.costPrice) || 0;
+  if (shares <= 0 || price <= 0 || typeof calculateTradingCost !== 'function') {
+      return { fee: 0, tax: 0, netValue: 0 };
+  }
   
   const { fee, tax, netAmount } = calculateTradingCost({ type: 'sell', price, shares, stock });
   return { fee, tax, netValue: netAmount };
 }
 
 // ==========================================
-// 動態保本成本與動態保本均價（隨現價即時試算賣出稅費）
+// 動態保本成本與均價（統一委派至 calculateAllInCost）
 // ==========================================
 function getBreakEvenCost(stock, currentPrice) {
-  const shares = stock.shares || 0;
-  const buyCost = (stock.costPrice || 0) * shares;
-  if (shares <= 0) return { totalCost: 0, breakEvenPrice: 0, sellFee: 0, sellTax: 0 };
+  const shares = Number(stock?.shares) || 0;
+  if (shares <= 0 || typeof calculateAllInCost !== 'function') {
+      return { totalCost: 0, breakEvenPrice: 0, sellFee: 0, sellTax: 0 };
+  }
 
-  const price = currentPrice || stock.price || stock.costPrice || 0;
-  const sellCost = calculateEstimatedSellCost(stock, price);
-  
-  const totalCost = buyCost + sellCost.fee + sellCost.tax;
-  const breakEvenPrice = totalCost / shares;
+  const price = Number(currentPrice) || Number(stock?.price) || Number(stock?.costPrice) || 0;
+  const allIn = calculateAllInCost(stock, price);
 
   return {
-    totalCost,
-    breakEvenPrice,
-    sellFee: sellCost.fee,
-    sellTax: sellCost.tax
+    totalCost: allIn.totalCost,
+    breakEvenPrice: allIn.averageCost,
+    sellFee: allIn.sellFee,
+    sellTax: allIn.sellTax
   };
 }

@@ -187,21 +187,36 @@ function toggleSyncCash() {
     tradeConfig.syncCash = document.getElementById('trade-sync-cash-toggle').checked;
 }
 
-// 動態試算（使用共用交易核心）
+// 動態試算（統一由 core.js 之 calculateTradingCost 處理，並增強防呆）
 function calcTradePreview(isManualFeeInput = false) {
     if (tradeConfig.stockIndex === -1) return;
+    const stocksList = (typeof state !== 'undefined' && Array.isArray(state.stocks)) ? state.stocks : [];
     const stock = tradeConfig.stockIndex === -2 ? {
         symbol: document.getElementById('trade-new-symbol')?.value || '',
         name: document.getElementById('trade-new-name')?.value || ''
-    } : state.stocks[tradeConfig.stockIndex];
+    } : stocksList[tradeConfig.stockIndex];
     
-    const price = parseFloat(document.getElementById('trade-price').value) || 0;
-    const shares = parseInt(document.getElementById('trade-shares').value) || 0;
+    const priceInput = document.getElementById('trade-price');
+    const sharesInput = document.getElementById('trade-shares');
+    const price = priceInput ? (parseFloat(priceInput.value) || 0) : 0;
+    const shares = sharesInput ? (parseInt(sharesInput.value, 10) || 0) : 0;
     const isBuy = tradeConfig.type === 'buy';
 
-    const automaticCost = calculateTradingCost({ type: tradeConfig.type, price, shares, stock });
-    const { tax, amount } = automaticCost;
-    const autoFee = automaticCost.fee;
+    const manualFeeInput = document.getElementById('trade-fee');
+    const manualFeeValue = (tradeConfig.manualFee && isManualFeeInput && manualFeeInput)
+        ? (parseInt(manualFeeInput.value, 10) || 0)
+        : null;
+
+    if (typeof calculateTradingCost !== 'function') return;
+
+    const automaticCost = calculateTradingCost({
+        type: tradeConfig.type,
+        price,
+        shares,
+        stock,
+        feeOverride: manualFeeValue
+    });
+    const { tax, amount, fee: autoFee } = automaticCost;
 
     let currentFee = autoFee;
     const feeInput = document.getElementById('trade-fee');
@@ -345,12 +360,37 @@ function renderGlobalTradeHistory() {
 }
 
 function deleteGlobalTransaction(stockIdx, transId) {
-    if (confirm("確定要刪除這筆交易紀錄嗎？\n(注意：刪除不會自動回滾現金與持股，需手動校正)")) {
+    if (confirm("確定要刪除這筆交易紀錄嗎？\n系統將自動回滾對應的現金餘額與持股成本。")) {
         const stock = state.stocks[stockIdx];
         if (!stock || !stock.transactions) return;
-        stock.transactions = stock.transactions.filter(t => t.id !== transId);
+
+        const targetIndex = stock.transactions.findIndex(t => t.id === transId);
+        if (targetIndex === -1) return;
+
+        const targetTrans = stock.transactions[targetIndex];
+        const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
+        const price = Math.max(0, parseFloat(targetTrans.price) || 0);
+        const shares = Math.max(0, parseInt(targetTrans.shares, 10) || 0);
+        const cost = calculateTradingCost({
+            type,
+            price,
+            shares,
+            stock,
+            feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
+        });
+
+        if (type === 'buy') {
+            state.cash = (Number(state.cash) || 0) + cost.netAmount;
+        } else {
+            state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
+        }
+
+        stock.transactions.splice(targetIndex, 1);
+        recalculateStockFromTransactions(stock);
+
         saveState();
         renderTradeTab();
-        if(typeof showToast === 'function') showToast('已刪除該筆紀錄');
+        if (typeof updateAllData === 'function') updateAllData();
+        if (typeof showToast === 'function') showToast('已刪除該筆紀錄並自動回滾現金與持股');
     }
 }

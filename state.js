@@ -113,18 +113,28 @@ function processImport(data) {
     state.rebalanceMode = data.rebalanceMode || 'global';
     // API 金鑰不再由備份檔匯入，避免把金鑰散播到下載檔或第三方備份。
     
-    state.stocks = data.stocks.map(s => ({
-        ...s,
-        beta: s.beta !== undefined ? s.beta : 1,
-        targetWeight: s.targetWeight !== undefined ? s.targetWeight : (isETFOrLeveraged(s.symbol, s.name) ? 1 : 0),
-        isLocked: s.isLocked !== undefined ? s.isLocked : (s.targetWeight === 0),
-        highPrice: s.highPrice !== undefined ? s.highPrice : null,
-        highDate: s.highDate !== undefined ? s.highDate : null,
-        lowPrice: s.lowPrice !== undefined ? s.lowPrice : null,
-        lowDate: s.lowDate !== undefined ? s.lowDate : null,
-        waterLevelSource: s.waterLevelSource || 'finmind',
-        transactions: s.transactions || [] // 確保新版交易簿相容並保留
-    }));
+    state.stocks = data.stocks.map(s => {
+        const item = {
+            ...s,
+            beta: s.beta !== undefined ? s.beta : 1,
+            targetWeight: s.targetWeight !== undefined ? s.targetWeight : (isETFOrLeveraged(s.symbol, s.name) ? 1 : 0),
+            isLocked: s.isLocked !== undefined ? s.isLocked : (s.targetWeight === 0),
+            highPrice: s.highPrice !== undefined ? s.highPrice : null,
+            highDate: s.highDate !== undefined ? s.highDate : null,
+            lowPrice: s.lowPrice !== undefined ? s.lowPrice : null,
+            lowDate: s.lowDate !== undefined ? s.lowDate : null,
+            waterLevelSource: s.waterLevelSource || 'finmind',
+            lastFetchedAt: Number.isFinite(s.lastFetchedAt) ? s.lastFetchedAt : null,
+            historyFetchedDate: s.historyFetchedDate || null,
+            transactions: s.transactions || [] // 確保新版交易簿相容並保留
+        };
+
+        // 資料驅動重算：若有交易紀錄，以交易明細推導真實持股與成本
+        if (Array.isArray(item.transactions) && item.transactions.length > 0 && typeof recalculateStockFromTransactions === 'function') {
+            recalculateStockFromTransactions(item);
+        }
+        return item;
+    });
     
     // 依序呼叫其他模組的刷新函式
     if (typeof balanceWeights === 'function') balanceWeights();
