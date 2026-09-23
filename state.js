@@ -24,6 +24,7 @@ function escapeHtml(value) {
 }
 
 const storedStocks = readStoredJson('mce_stocks', []);
+const storedWatchStocks = readStoredJson('mce_watch_stocks', []);
 
 const state = {
     cash: Number.isFinite(parseFloat(localStorage.getItem('mce_cash'))) ? parseFloat(localStorage.getItem('mce_cash')) : 0,
@@ -31,6 +32,7 @@ const state = {
     deviation: Number.isFinite(parseFloat(localStorage.getItem('mce_deviation'))) ? parseFloat(localStorage.getItem('mce_deviation')) : 5,
     cashFlowFirst: localStorage.getItem('mce_cash_flow_first') !== 'false',
     stocks: Array.isArray(storedStocks) ? storedStocks : [],
+    watchStocks: Array.isArray(storedWatchStocks) ? storedWatchStocks : [],
     apiKey: localStorage.getItem('mce_apikey') || '',
     geminiApiKey: localStorage.getItem('mce_gemini_apikey') || '',
     finmindToken: localStorage.getItem('mce_finmind_token') || '',
@@ -47,6 +49,7 @@ function saveState() {
     localStorage.setItem('mce_gemini_apikey', state.geminiApiKey);
     localStorage.setItem('mce_finmind_token', state.finmindToken);
     localStorage.setItem('mce_stocks', JSON.stringify(state.stocks));
+    localStorage.setItem('mce_watch_stocks', JSON.stringify(state.watchStocks));
 }
 
 // 輔助函式：判斷是否為 ETF 或槓桿型 (預設自動納入均分)
@@ -65,7 +68,8 @@ function exportBackup() {
         deviation: state.deviation,
         cashFlowFirst: state.cashFlowFirst,
         rebalanceMode: state.rebalanceMode,
-        stocks: state.stocks
+        stocks: state.stocks,
+        watchStocks: state.watchStocks || []
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -111,6 +115,7 @@ function processImport(data) {
     state.deviation = data.deviation !== undefined ? data.deviation : 5;
     state.cashFlowFirst = data.cashFlowFirst !== undefined ? data.cashFlowFirst : true;
     state.rebalanceMode = data.rebalanceMode || 'global';
+    state.watchStocks = Array.isArray(data.watchStocks) ? data.watchStocks : [];
     // API 金鑰不再由備份檔匯入，避免把金鑰散播到下載檔或第三方備份。
     
     state.stocks = data.stocks.map(s => {

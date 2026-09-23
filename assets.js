@@ -1150,6 +1150,11 @@ async function manualRefreshFromChart() {
             tasks.push(fetchFinmindHighLow());
         }
 
+        // 3. 更新自選追蹤股票價量 (不計入再平衡)
+        if (typeof fetchWatchStockPrices === 'function') {
+            tasks.push(fetchWatchStockPrices());
+        }
+
         await Promise.allSettled(tasks);
 
         saveState();
@@ -1330,9 +1335,7 @@ function calculateEstimatedSellCost(stock, currentPrice) {
   return { fee, tax, netValue: netAmount };
 }
 
-// ==========================================
 // 動態保本成本與均價（統一委派至 calculateAllInCost）
-// ==========================================
 function getBreakEvenCost(stock, currentPrice) {
   const shares = Number(stock?.shares) || 0;
   if (shares <= 0 || typeof calculateAllInCost !== 'function') {
@@ -1348,4 +1351,49 @@ function getBreakEvenCost(stock, currentPrice) {
     sellFee: allIn.sellFee,
     sellTax: allIn.sellTax
   };
+}
+
+// 專為自選追蹤股票更新即時行情與成交量（完全隔離平衡與資產計算）
+async function fetchWatchStockPrices() {
+    if (!state.apiKey || !Array.isArray(state.watchStocks) || state.watchStocks.length === 0) return;
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    for (let stock of state.watchStocks) {
+        if (!stock.symbol) continue;
+        try {
+            const quoteRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${stock.symbol}`, {
+                headers: { 'X-API-KEY': state.apiKey }
+            });
+            if (quoteRes.ok) {
+                const quote = await quoteRes.json();
+                const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
+                const prevClose = quote.previousClose || latestPrice;
+                stock.price = latestPrice;
+                stock.change = latestPrice - prevClose;
+                stock.changePercent = quote.changePercent || (prevClose > 0 ? ((latestPrice - prevClose) / prevClose) * 100 : 0);
+                stock.volume = quote.total?.tradeVolume || quote.volume || 0;
+                stock.intradayQuote = {
+                    date: todayStr,
+                    open: quote.openPrice || latestPrice,
+                    high: quote.highPrice || latestPrice,
+                    low: quote.lowPrice || latestPrice,
+                    close: latestPrice
+                };
+            }
+            if (!stock.name || stock.name === stock.symbol) {
+                const tickerRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${stock.symbol}`, {
+                    headers: { 'X-API-KEY': state.apiKey }
+                });
+                if (tickerRes.ok) {
+                    const ticker = await tickerRes.json();
+                    if (ticker.name) stock.name = ticker.name;
+                }
+            }
+        } catch (e) {
+            console.warn(`無法取得追蹤標的 ${stock.symbol} 報價:`, e);
+        }
+    }
+    saveState();
+    if (typeof renderWatchStocks === 'function') renderWatchStocks();
 }
