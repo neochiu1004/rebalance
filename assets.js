@@ -1394,6 +1394,9 @@ async function fetchWatchStockPrices() {
             console.warn(`無法取得追蹤標的 ${stock.symbol} 報價:`, e);
         }
     }
+    state.watchLastFetchedTime = now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
     saveState();
+    const updateEl = document.getElementById('watch-last-update');
+    if (updateEl) updateEl.textContent = `· 已更新 ${state.watchLastFetchedTime}`;
     if (typeof renderWatchStocks === 'function') renderWatchStocks();
 }

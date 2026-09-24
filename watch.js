@@ -74,8 +74,8 @@ function renderWatchStocks() {
         const sign = isUp ? '▲ +' : isDown ? '▼ ' : '';
         const chgSign = chg > 0 ? '+' : '';
 
-        // 成交量格式化（大於 1,000 股以「張」顯示）
-        const volumeText = vol > 0 ? (vol >= 1000 ? `${fmt(Math.round(vol / 1000))} 張` : `${fmt(vol)} 股`) : '--';
+        // 成交量格式化：Fugle total.tradeVolume 單位為「張」
+        const volumeText = vol > 0 ? `${fmt(vol)} 張` : '--';
 
         return `
         <div class="glass-card p-4 transition-all hover:border-slate-300 relative">
@@ -90,10 +90,6 @@ function renderWatchStocks() {
                     <button onclick="openWatchWaterLevel(${i})" class="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-100 transition-colors">
                         📈 走勢
                     </button>
-                    <button onclick="removeWatchStock(${i})" class="text-slate-400 hover:text-red-500 p-1" title="移除追蹤">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
                     <button onclick="removeWatchStock(${i})" class="text-slate-400 hover:text-red-500 p-1" title="移除追蹤">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -238,5 +234,21 @@ async function fetchActiveTrendStockHistory() {
             btn.innerHTML = originalText;
             btn.classList.remove('pointer-events-none', 'opacity-70');
         }
+    }
+}
+
+// 手動觸發追蹤標的報價與成交量更新
+async function manualRefreshWatchStocks() {
+    const btn = document.getElementById('btn-refresh-watch');
+    if (btn) btn.classList.add('animate-spin', 'pointer-events-none');
+    try {
+        if (typeof fetchWatchStockPrices === 'function') {
+            await fetchWatchStockPrices();
+            if (typeof showToast === 'function') showToast('追蹤標的報價已更新');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('更新失敗，請檢查 API Key 或網路');
+    } finally {
+        if (btn) btn.classList.remove('animate-spin', 'pointer-events-none');
     }
 }

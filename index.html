@@ -711,11 +711,19 @@
             <div data-refresh-header class="refresh-header sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6 mb-6 flex justify-between items-center">
                 <div>
                     <h1 class="text-2xl font-black text-slate-900 m-0">自選追蹤標的</h1>
-                    <p class="text-xs text-slate-400 font-semibold mt-0.5">關注行情與成交量，不納入資產總額與再平衡</p>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <p class="text-xs text-slate-400 font-semibold">關注行情與成交量，不納入資產總額與再平衡</p>
+                        <span id="watch-last-update" class="text-[10px] text-slate-400 font-mono"></span>
+                    </div>
                 </div>
-                <button onclick="addWatchStock()" class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">
-                    ＋ 新增追蹤
-                </button>
+                <div class="flex items-center gap-2">
+                    <button id="btn-refresh-watch" onclick="manualRefreshWatchStocks()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all active:scale-95" title="更新報價與成交量">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                    <button onclick="addWatchStock()" class="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95">
+                        ＋ 新增追蹤
+                    </button>
+                </div>
             </div>
             <div id="watch-stock-list" class="space-y-3 mb-8"></div>
         </section>
