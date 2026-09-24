@@ -94,6 +94,10 @@ function renderWatchStocks() {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
+                    <button onclick="removeWatchStock(${i})" class="text-slate-400 hover:text-red-500 p-1" title="移除追蹤">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- 參考截圖呈現：現價、漲跌、成交量 -->
@@ -154,4 +158,85 @@ function openWatchWaterLevel(index) {
     if (typeof setTrendChartMode === 'function') setTrendChartMode(trendChartMode || 'line');
     if (typeof updateTrendRangeButtons === 'function') updateTrendRangeButtons();
     if (typeof renderTrendChart === 'function') renderTrendChart(stock);
+}
+
+// 供 Modal 內一鍵載入當前開啟股票（含追蹤標的）之 FinMind 歷史資料
+async function fetchActiveTrendStockHistory() {
+    if (!trendChartStock || !trendChartStock.symbol) return;
+    if (!state.finmindToken) {
+        if (typeof showToast === 'function') showToast('請先至「資料管理與設定」頁輸入 FinMind Token');
+        return;
+    }
+
+    const btn = document.getElementById('btn-fetch-current-trend');
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 載入中...`;
+        btn.classList.add('pointer-events-none', 'opacity-70');
+    }
+
+    try {
+        const today = new Date();
+        const lastYear = new Date(today);
+        lastYear.setDate(today.getDate() - 365);
+        const startDateStr = lastYear.toISOString().split('T')[0];
+
+        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${trendChartStock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('API 請求失敗');
+
+        const resData = await response.json();
+        if (resData.msg === "success" && resData.data && resData.data.length > 0) {
+            let validStartIndex = 0;
+            for (let j = resData.data.length - 1; j >= 0; j--) {
+                const day = resData.data[j];
+                if (j > 0) {
+                    const prevDay = resData.data[j - 1];
+                    const diffRatio = prevDay.close > 0 ? Math.abs(prevDay.close - day.close) / prevDay.close : 0;
+                    if (diffRatio >= 0.5) {
+                        validStartIndex = j;
+                        break;
+                    }
+                }
+            }
+
+            const validData = resData.data.slice(validStartIndex).filter(day => Number(day.close) > 0);
+            const historyData = validData.map(day => ({
+                d: day.date,
+                o: Number(day.open),
+                h: Number(day.max),
+                l: Number(day.min),
+                c: Number(day.close),
+                v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
+            }));
+            const highPoint = validData.reduce((best, day) => Number(day.max) > best.price ? { price: Number(day.max), date: day.date } : best, { price: -Infinity, date: '' });
+            const lowPoint = validData.reduce((best, day) => Number(day.min) < best.price ? { price: Number(day.min), date: day.date } : best, { price: Infinity, date: '' });
+
+            if (historyData.length > 0) {
+                trendChartStock.highPrice = highPoint.price !== -Infinity ? highPoint.price : null;
+                trendChartStock.highDate = highPoint.date;
+                trendChartStock.lowPrice = lowPoint.price !== Infinity ? lowPoint.price : null;
+                trendChartStock.lowDate = lowPoint.date;
+                trendChartStock.historyData = historyData;
+
+                saveState();
+                const noDataEl = document.getElementById('trend-no-data-msg');
+                if (noDataEl) noDataEl.classList.add('hidden');
+                if (typeof setTrendChartMode === 'function') setTrendChartMode(trendChartMode || 'line');
+                if (typeof updateTrendRangeButtons === 'function') updateTrendRangeButtons();
+                if (typeof renderTrendChart === 'function') renderTrendChart(trendChartStock);
+                if (typeof showToast === 'function') showToast(`已成功載入 ${trendChartStock.name || trendChartStock.symbol} 歷史走勢`);
+            }
+        } else {
+            if (typeof showToast === 'function') showToast(`FinMind 未回傳代號 ${trendChartStock.symbol} 之資料`);
+        }
+    } catch (err) {
+        console.error("Fetch Trend History Error:", err);
+        if (typeof showToast === 'function') showToast('歷史報價載入失敗，請確認網路或 Token');
+    } finally {
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.classList.remove('pointer-events-none', 'opacity-70');
+        }
+    }
 }

@@ -220,12 +220,12 @@
     <!-- 走勢圖 Modal (已補齊所有資訊列與區域摘要 ID) -->
     <div id="trend-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] hidden opacity-0 transition-opacity duration-200">
         <div class="bg-white p-6 rounded-2xl shadow-xl max-w-lg w-full mx-4 transform scale-95 transition-transform duration-200 relative max-h-[92vh] overflow-y-auto" id="trend-modal-content">
-            <div class="flex justify-between items-center mb-4">
+            <div class="flex justify-between items-center mb-4 relative z-30">
                 <div>
                     <h2 class="font-bold text-xl text-slate-800" id="trend-stock-title">股票走勢分析</h2>
                     <p class="text-xs text-slate-400 mt-0.5" id="trend-stock-subtitle">近 1 年股價與市場水位</p>
                 </div>
-                <button onclick="closeTrendModal()" class="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 rounded-full">
+                <button onclick="closeTrendModal()" class="text-slate-500 hover:text-slate-800 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors" title="關閉">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
@@ -319,8 +319,18 @@
                 <span><i class="inline-block w-5 h-3 rounded-sm bg-amber-100 align-middle mr-1"></i>觀察區間（-10%～-20%）</span>
                 <span><i class="inline-block w-5 h-3 rounded-sm bg-rose-100 align-middle mr-1"></i>股災區間（-20% 以上）</span>
             </div>
-            <div id="trend-no-data-msg" class="hidden absolute inset-0 flex items-center justify-center bg-white/95 rounded-2xl text-center p-6 text-sm font-semibold text-slate-400">
-                尚無歷史資料，請先在市場水位頁載入歷史報價。
+            <div id="trend-no-data-msg" class="hidden absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/95 rounded-2xl text-center p-6 text-sm">
+                <div class="text-slate-600 font-bold mb-2">尚無近 1 年歷史資料</div>
+                <p class="text-xs text-slate-400 max-w-xs mb-5">點擊下方按鈕即可透過 FinMind 自動抓取該標的的歷史走勢與高低點。</p>
+                <div class="flex items-center gap-3">
+                    <button type="button" id="btn-fetch-current-trend" onclick="fetchActiveTrendStockHistory()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        立即載入歷史走勢
+                    </button>
+                    <button type="button" onclick="closeTrendModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all">
+                        關閉視窗
+                    </button>
+                </div>
             </div>
         </div>
     </div>
