@@ -1030,15 +1030,45 @@ async function addStockSubmit(e) {
     }
 }
 
+// 全域跨頁面同標的報價自動同步函式
+function syncStockPriceBySymbol(symbol, price, changePercent = 0, intradayQuote = null) {
+    if (!symbol || !Number.isFinite(Number(price)) || Number(price) <= 0) return;
+    const targetSymbol = String(symbol).toUpperCase();
+
+    // 同步主頁面持股 (state.stocks)
+    if (Array.isArray(state.stocks)) {
+        state.stocks.forEach(s => {
+            if ((s.symbol || '').toUpperCase() === targetSymbol) {
+                s.price = Number(price);
+                if (changePercent !== undefined) s.changePercent = Number(changePercent);
+                if (intradayQuote) s.intradayQuote = intradayQuote;
+                s.lastFetchedAt = Date.now();
+            }
+        });
+    }
+
+    // 同步追蹤清單 (state.watchStocks)
+    if (Array.isArray(state.watchStocks)) {
+        state.watchStocks.forEach(w => {
+            if ((w.symbol || '').toUpperCase() === targetSymbol) {
+                w.price = Number(price);
+                if (changePercent !== undefined) w.changePercent = Number(changePercent);
+                if (intradayQuote) w.intradayQuote = intradayQuote;
+            }
+        });
+    }
+}
+
 async function fetchLatestPrices() {
-    if (!state.apiKey || state.stocks.length === 0) return;
+    if (!state.apiKey || !Array.isArray(state.stocks) || state.stocks.length === 0) return;
     
     const lastUpdateEl = document.getElementById('last-update');
-    if (!lastUpdateEl) return;
-    lastUpdateEl.innerText = "連線取得報價中...";
-    if (lastUpdateEl.previousElementSibling) {
-        lastUpdateEl.previousElementSibling.classList.remove('bg-green-500');
-        lastUpdateEl.previousElementSibling.classList.add('bg-amber-500');
+    if (lastUpdateEl) {
+        lastUpdateEl.innerText = "連線取得報價中...";
+        if (lastUpdateEl.previousElementSibling) {
+            lastUpdateEl.previousElementSibling.classList.remove('bg-green-500');
+            lastUpdateEl.previousElementSibling.classList.add('bg-amber-500');
+        }
     }
 
     const now = new Date();
@@ -1046,15 +1076,14 @@ async function fetchLatestPrices() {
     const delay = (ms) => new Promise(res => setTimeout(res, ms));
     let updated = false;
 
-    // 將股票以 3 檔為單位分批並行，並在批次間加入防護延遲
     const batchSize = 3;
     for (let i = 0; i < state.stocks.length; i += batchSize) {
         const batch = state.stocks.slice(i, i + batchSize);
         await Promise.all(batch.map(async (stock) => {
-            if (!stock.symbol) return;
+            if (!stock || !stock.symbol) return;
 
             // 快取判斷：若 3 分鐘內已更新且有今日資料，略過重複查詢
-            if (stock.lastFetchedAt && (now.getTime() - stock.lastFetchedAt < 180000) && stock.price > 0) {
+            if (stock.lastFetchedAt && (now.getTime() - stock.lastFetchedAt < 180000) && Number(stock.price) > 0) {
                 return;
             }
 
@@ -1070,49 +1099,64 @@ async function fetchLatestPrices() {
                 const responses = await Promise.all(fetches);
                 if (responses[0] && responses[0].ok) {
                     const quote = await responses[0].json();
-                    const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
-                    stock.price = latestPrice;
-                    stock.lastFetchedAt = now.getTime();
-                    stock.intradayQuote = {
-                        date: todayStr,
-                        open: quote.openPrice || latestPrice,
-                        high: quote.highPrice || latestPrice,
-                        low: quote.lowPrice || latestPrice,
-                        close: latestPrice
-                    };
-                    if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate && latestPrice > 0) {
-                        stock.costPrice = latestPrice;
-                        stock.firstPriceDate = todayStr;
+                    // 加強欄位 Optional Chaining 與 Safe Fallback
+                    const rawPrice = quote?.closePrice ?? quote?.lastPrice ?? quote?.previousClose;
+                    const latestPrice = Number.isFinite(Number(rawPrice)) && Number(rawPrice) > 0 
+                        ? Number(rawPrice) 
+                        : (Number(stock.price) || Number(stock.costPrice) || 0);
+
+                    if (latestPrice > 0) {
+                        const changePercent = Number.isFinite(Number(quote?.changePercent)) ? Number(quote.changePercent) : (stock.changePercent || 0);
+                        const intradayQuote = {
+                            date: todayStr,
+                            open: Number(quote?.openPrice) || latestPrice,
+                            high: Number(quote?.highPrice) || latestPrice,
+                            low: Number(quote?.lowPrice) || latestPrice,
+                            close: latestPrice
+                        };
+
+                        // 呼叫跨頁面雙向同步
+                        syncStockPriceBySymbol(stock.symbol, latestPrice, changePercent, intradayQuote);
+
+                        if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate) {
+                            stock.costPrice = latestPrice;
+                            stock.firstPriceDate = todayStr;
+                        }
+                        updated = true;
                     }
-                    stock.changePercent = quote.changePercent || 0; 
-                    updated = true;
                 }
                 if (needsName && responses[1] && responses[1].ok) {
                     const ticker = await responses[1].json();
-                    if (ticker.name) {
+                    if (ticker && ticker.name) {
                         stock.name = ticker.name;
                         updated = true;
                     }
                 }
             } catch (err) {
-                console.log(`Failed to fetch ${stock.symbol}`, err);
+                console.warn(`[主頁面報價] 抓取代號 ${stock.symbol} 失敗:`, err);
+                // 防護容錯：保持原價不崩潰
             }
         }));
 
         if (i + batchSize < state.stocks.length) {
-            await delay(250); // 批次間延遲 250ms 防止觸發 API 頻率限制
+            await delay(250);
         }
     }
 
     if (updated) {
         saveState();
-        const now = new Date();
-        lastUpdateEl.innerText = `最新報價 ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-        if (lastUpdateEl.previousElementSibling) {
-            lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500');
-            lastUpdateEl.previousElementSibling.classList.add('bg-green-500');
+        if (typeof renderWatchStocks === 'function') renderWatchStocks();
+        if (typeof updateAllData === 'function') updateAllData();
+
+        if (lastUpdateEl) {
+            const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+            lastUpdateEl.innerText = `最新報價 ${timeStr}`;
+            if (lastUpdateEl.previousElementSibling) {
+                lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500');
+                lastUpdateEl.previousElementSibling.classList.add('bg-green-500');
+            }
         }
-    } else {
+    } else if (lastUpdateEl) {
         lastUpdateEl.innerText = "(目前無連線或使用歷史價格)";
         if (lastUpdateEl.previousElementSibling) {
             lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500');
@@ -1360,26 +1404,40 @@ async function fetchWatchStockPrices() {
     const todayStr = now.toISOString().split('T')[0];
 
     for (let stock of state.watchStocks) {
-        if (!stock.symbol) continue;
+        if (!stock || !stock.symbol) continue;
         try {
             const quoteRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${stock.symbol}`, {
                 headers: { 'X-API-KEY': state.apiKey }
             });
             if (quoteRes.ok) {
                 const quote = await quoteRes.json();
-                const latestPrice = quote.closePrice || quote.lastPrice || stock.price;
-                const prevClose = quote.previousClose || latestPrice;
-                stock.price = latestPrice;
-                stock.change = latestPrice - prevClose;
-                stock.changePercent = quote.changePercent || (prevClose > 0 ? ((latestPrice - prevClose) / prevClose) * 100 : 0);
-                stock.volume = quote.total?.tradeVolume || quote.volume || 0;
-                stock.intradayQuote = {
-                    date: todayStr,
-                    open: quote.openPrice || latestPrice,
-                    high: quote.highPrice || latestPrice,
-                    low: quote.lowPrice || latestPrice,
-                    close: latestPrice
-                };
+                const rawPrice = quote?.closePrice ?? quote?.lastPrice ?? quote?.previousClose;
+                const latestPrice = Number.isFinite(Number(rawPrice)) && Number(rawPrice) > 0 
+                    ? Number(rawPrice) 
+                    : (Number(stock.price) || 0);
+
+                if (latestPrice > 0) {
+                    const prevClose = Number(quote?.previousClose) || latestPrice;
+                    const changePercent = Number.isFinite(Number(quote?.changePercent))
+                        ? Number(quote.changePercent)
+                        : (prevClose > 0 ? ((latestPrice - prevClose) / prevClose) * 100 : 0);
+
+                    stock.change = latestPrice - prevClose;
+                    stock.volume = Number(quote?.total?.tradeVolume || quote?.volume || 0);
+
+                    const intradayQuote = {
+                        date: todayStr,
+                        open: Number(quote?.openPrice) || latestPrice,
+                        high: Number(quote?.highPrice) || latestPrice,
+                        low: Number(quote?.lowPrice) || latestPrice,
+                        close: latestPrice
+                    };
+
+                    // 呼叫全域雙向價格同步，自動更新主頁面及追蹤清單相同代號之價格
+                    if (typeof syncStockPriceBySymbol === 'function') {
+                        syncStockPriceBySymbol(stock.symbol, latestPrice, changePercent, intradayQuote);
+                    }
+                }
             }
             if (!stock.name || stock.name === stock.symbol) {
                 const tickerRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${stock.symbol}`, {
@@ -1387,16 +1445,18 @@ async function fetchWatchStockPrices() {
                 });
                 if (tickerRes.ok) {
                     const ticker = await tickerRes.json();
-                    if (ticker.name) stock.name = ticker.name;
+                    if (ticker && ticker.name) stock.name = ticker.name;
                 }
             }
         } catch (e) {
-            console.warn(`無法取得追蹤標的 ${stock.symbol} 報價:`, e);
+            console.warn(`[追蹤報價] 無法取得追蹤標的 ${stock.symbol} 報價:`, e);
         }
     }
     state.watchLastFetchedTime = now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
     saveState();
+    if (typeof updateAllData === 'function') updateAllData();
+    if (typeof renderWatchStocks === 'function') renderWatchStocks();
+
     const updateEl = document.getElementById('watch-last-update');
     if (updateEl) updateEl.textContent = `· 已更新 ${state.watchLastFetchedTime}`;
-    if (typeof renderWatchStocks === 'function') renderWatchStocks();
 }
