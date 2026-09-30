@@ -1075,6 +1075,7 @@ async function fetchLatestPrices() {
     const todayStr = now.toISOString().split('T')[0];
     const delay = (ms) => new Promise(res => setTimeout(res, ms));
     let updated = false;
+    const failedSymbols = [];
 
     const batchSize = 3;
     for (let i = 0; i < state.stocks.length; i += batchSize) {
@@ -1123,8 +1124,13 @@ async function fetchLatestPrices() {
                             stock.firstPriceDate = todayStr;
                         }
                         updated = true;
+                    } else {
+                        failedSymbols.push(stock.symbol);
                     }
+                } else {
+                    failedSymbols.push(stock.symbol);
                 }
+
                 if (needsName && responses[1] && responses[1].ok) {
                     const ticker = await responses[1].json();
                     if (ticker && ticker.name) {
@@ -1134,7 +1140,7 @@ async function fetchLatestPrices() {
                 }
             } catch (err) {
                 console.warn(`[主頁面報價] 抓取代號 ${stock.symbol} 失敗:`, err);
-                // 防護容錯：保持原價不崩潰
+                failedSymbols.push(stock.symbol);
             }
         }));
 
@@ -1147,20 +1153,24 @@ async function fetchLatestPrices() {
         saveState();
         if (typeof renderWatchStocks === 'function') renderWatchStocks();
         if (typeof updateAllData === 'function') updateAllData();
+    }
 
-        if (lastUpdateEl) {
+    if (lastUpdateEl) {
+        if (failedSymbols.length > 0) {
+            // 部分或全部失敗時，條列出未抓取的股票代號
+            lastUpdateEl.innerText = `未取得最新價: ${failedSymbols.join(', ')} (使用歷史價格)`;
+            if (lastUpdateEl.previousElementSibling) {
+                lastUpdateEl.previousElementSibling.classList.remove('bg-green-500', 'bg-amber-500');
+                lastUpdateEl.previousElementSibling.classList.add('bg-slate-400');
+            }
+        } else {
+            // 全部成功更新
             const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
             lastUpdateEl.innerText = `最新報價 ${timeStr}`;
             if (lastUpdateEl.previousElementSibling) {
-                lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500');
+                lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500', 'bg-slate-400');
                 lastUpdateEl.previousElementSibling.classList.add('bg-green-500');
             }
-        }
-    } else if (lastUpdateEl) {
-        lastUpdateEl.innerText = "(目前無連線或使用歷史價格)";
-        if (lastUpdateEl.previousElementSibling) {
-            lastUpdateEl.previousElementSibling.classList.remove('bg-amber-500');
-            lastUpdateEl.previousElementSibling.classList.add('bg-slate-400');
         }
     }
 }
