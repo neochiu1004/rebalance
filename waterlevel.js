@@ -144,8 +144,10 @@ function getTrendHistory(stock) {
             open: stock.price,
             high: stock.price,
             low: stock.price,
-            close: stock.price
+            close: stock.price,
+            volume: stock.volume || 0
         };
+        const volumeVal = Number(quote.volume || quote.tradeVolume || stock.volume || 0);
         const lastItem = history[history.length - 1];
         if (!lastItem || lastItem.d < quote.date) {
             history.push({
@@ -153,12 +155,14 @@ function getTrendHistory(stock) {
                 o: Number(quote.open),
                 h: Number(quote.high),
                 l: Number(quote.low),
-                c: Number(quote.close)
+                c: Number(quote.close),
+                v: volumeVal
             });
         } else if (lastItem && lastItem.d === quote.date) {
             lastItem.c = Number(quote.close);
             if (quote.high > lastItem.h) lastItem.h = Number(quote.high);
             if (quote.low < lastItem.l) lastItem.l = Number(quote.low);
+            if (volumeVal > 0) lastItem.v = volumeVal;
         }
     }
 
@@ -452,6 +456,7 @@ function renderTrendChart(stock) {
     if (rangeEl) rangeEl.textContent = rangeStart && rangeEnd ? `${rangeStart.slice(5)} - ${rangeEnd.slice(5)}` : '';
 
     // 動態更新固定資訊面板
+    // 動態更新固定資訊面板
     const updateFixedInfoBar = (index) => {
         const dateEl = document.getElementById('fixed-info-date');
         const closeEl = document.getElementById('fixed-info-close');
@@ -475,9 +480,18 @@ function renderTrendChart(stock) {
         highEl.textContent = Number.isFinite(ohlc.h) ? fmtPrice(ohlc.h) : '--';
         lowEl.textContent = Number.isFinite(ohlc.l) ? fmtPrice(ohlc.l) : '--';
         closeEl.textContent = Number.isFinite(ohlc.c) ? fmtPrice(ohlc.c) : '--';
+        
         if (volumeEl) {
-            const vol = ohlc.v;
-            volumeEl.textContent = vol > 0 ? `${fmt(vol >= 1000 ? Math.round(vol / 1000) : vol)} ${vol >= 1000 ? '張' : '股'}` : '--';
+            const rawVol = Number(ohlc.v) || 0;
+            if (rawVol > 0) {
+                // 自動判斷單位：
+                // FinMind 歷史成交量為「股」(通常大於 1,000,000)，需除以 1000 轉為「張」
+                // Fugle 即時成交量已為「張」，不重複除以 1000
+                const sheets = rawVol >= 1000000 ? Math.round(rawVol / 1000) : Math.round(rawVol);
+                volumeEl.textContent = `${fmt(sheets)} 張`;
+            } else {
+                volumeEl.textContent = '--';
+            }
         }
         
         if (hp > 0 && price > 0) {

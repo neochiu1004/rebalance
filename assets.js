@@ -1,6 +1,6 @@
 // ==========================================
 // MCE 模組化 - assets.js (核心渲染與持股邏輯)
-// 版本: v14.5 (Full Integrated Fix)
+// 版本: v14.6 (Fix Syntax Error & Add Volume to IntradayQuote)
 // ==========================================
 
 let assetChart = null;
@@ -19,7 +19,7 @@ const symbolMap = {
     '欣興': '3037'
 };
 
-// 將交易簿彙整成總覽可讀的成本明細（統一依賴 core.js 之 calculateTradingCost 計算或讀取標準欄位）
+// 將交易簿彙整成總覽可讀的成本明細
 function calculateTransactionBreakdown(stock = {}) {
     const breakdown = {
         buyAmount: 0,
@@ -68,8 +68,6 @@ function getTransactionType(transaction) {
     return transaction.type === 'buy' || transaction.type === '買進' ? 'buy' : 'sell';
 }
 
-// 依日期回推當日持股與現金，讓買賣不被誤算成單日績效。
-// 價格、交易皆預先排序，避免每次渲染重複掃描整份資料。
 function calculateDailyPortfolioHistory() {
     const stocksWithHistory = (state.stocks || []).filter(stock =>
         Array.isArray(stock.historyData) && stock.historyData.length > 0
@@ -347,9 +345,6 @@ function renderDailyPerformanceTable() {
         </div>`;
 }
 
-// ==========================================
-// 核心數據引擎 (修復 NaN 錯誤的關鍵)
-// ==========================================
 function calculatePortfolioState() {
     let totalDisplayStockValue = 0; 
     let activeStockValue = 0;       
@@ -409,13 +404,9 @@ function calculatePortfolioState() {
     };
 }
 
-// ==========================================
-// 全域 UI 數據整合更新 (觸發各模組重新渲染)
-// ==========================================
 function updateAllData() {
     const metrics = calculatePortfolioState();
     
-    // 1. 總覽面板數值更新
     const elTotalAsset = document.getElementById('total-asset-value');
     const elTotalStock = document.getElementById('total-stock-value');
     const elCashVal = document.getElementById('cash-value-display');
@@ -435,7 +426,6 @@ function updateAllData() {
     if (tBeta) tBeta.innerText = metrics.targetBeta.toFixed(2);
     if (rBetaFlow) rBetaFlow.innerText = `${metrics.portfolioBeta.toFixed(2)} ➔ ${metrics.targetBeta.toFixed(2)}`;
 
-    // 2. 總盈虧更新
     const summaryEl = document.getElementById('total-pnl-summary');
     if (metrics.totalPaidCostSum > 0 && summaryEl) {
         summaryEl.classList.remove('hidden');
@@ -457,7 +447,6 @@ function updateAllData() {
         summaryEl.classList.add('hidden');
     }
 
-    // 3. 股票清單卡片渲染 (依附 index.html 的 stock-cards-container)
     const stockListEl = document.getElementById('stock-cards-container') || document.getElementById('stock-list');
     if (stockListEl) {
         stockListEl.innerHTML = state.stocks.length === 0 ? 
@@ -500,8 +489,6 @@ function updateAllData() {
             
             return `
             <div class="glass-card p-4 transition-all hover:border-slate-300 relative overflow-hidden">
-                
-                <!-- 卡片頂部標題與操作按鈕 -->
                 <div class="flex justify-between items-center mb-3 pb-3 border-b border-slate-100">
                     <div class="flex items-center gap-2 max-w-[60%]">
                         <span class="bg-slate-200 text-slate-900 text-sm px-2.5 py-1 rounded-md font-black shrink-0 shadow-inner">${Math.round(ratio)}%</span>
@@ -512,7 +499,6 @@ function updateAllData() {
                         </div>
                     </div>
                     
-                    <!-- 右側操作按鈕區：水位、編輯、刪除 -->
                     <div class="flex items-center gap-1.5 shrink-0 relative z-20">
                         <button onclick="openWaterLevelDetail(${index})" class="flex items-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-bold text-blue-700 bg-blue-100 border border-blue-200 hover:bg-blue-200 rounded-lg transition-colors" title="查看市場水位與歷史走勢">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
@@ -527,7 +513,6 @@ function updateAllData() {
                     </div>
                 </div>
 
-                <!-- 價格資訊三欄（直接顯示，不折疊） -->
                 <div class="grid grid-cols-3 gap-2 mb-4">
                     <div class="bg-slate-100 border border-slate-200 p-2.5 rounded-xl flex flex-col justify-center items-center text-center">
                         <span class="text-xs font-bold text-slate-700 mb-0.5">當前現價</span>
@@ -543,7 +528,6 @@ function updateAllData() {
                     </div>
                 </div>
 
-                <!-- 基礎持股數據雙欄（直接顯示，高對比度加深字體） -->
                 <div class="grid grid-cols-2 text-sm text-slate-700 gap-y-2.5 mb-3 font-semibold">
                     <div class="flex items-center gap-1">持有股數: <span class="font-black text-slate-900">${fmt(s.shares)} 股</span></div>
                     <div class="flex items-center gap-1">目前盈虧: <span class="font-black ${pnlColorClass}">${pnlSign}NT$${fmt(Math.abs(grossPnL))} (${pnlSign}${Math.abs(grossPnLPercent).toFixed(2)}%)</span></div>
@@ -551,7 +535,6 @@ function updateAllData() {
                     <div class="flex items-center gap-1">付出成本: <span class="font-black text-slate-900">NT$${fmt(paidCost)}</span></div>
                 </div>
 
-                <!-- 唯獨「成本明細」保留折疊功能 -->
                 <details class="pt-2 border-t border-slate-200 group/sub">
                     <summary class="text-xs font-bold text-slate-700 cursor-pointer flex items-center justify-between select-none list-none py-1.5 hover:text-slate-900">
                         <span>成本明細</span>
@@ -570,10 +553,8 @@ function updateAllData() {
         }).join('');
     }
 
-    // 4. 更新圓環圖
     renderChart(metrics.totalDisplayStockValue, state.cash);
 
-    // 5. 觸發其他模組連動
     if (typeof populateQuickSelect === 'function') populateQuickSelect();
     if (typeof renderRebalanceResult === 'function') renderRebalanceResult(metrics);
     if (typeof syncWeightUI === 'function') syncWeightUI();
@@ -581,9 +562,6 @@ function updateAllData() {
     renderDailyPerformanceTable();
 }
 
-// ==========================================
-// 圓環圖表渲染邏輯
-// ==========================================
 function renderChart(stockVal, cashVal) {
     const canvasEl = document.getElementById('assetChart');
     if (!canvasEl) return;
@@ -620,9 +598,6 @@ function renderChart(stockVal, cashVal) {
     });
 }
 
-// ==========================================
-// 現金編輯彈窗邏輯
-// ==========================================
 function openCashEditModal() {
     const toggleEl = document.getElementById('modal-cash-mode-toggle');
     if (toggleEl) toggleEl.checked = false;
@@ -763,13 +738,8 @@ function saveEditCash(e) {
     }
 }
 
-// ==========================================
-// 總覽卡片快捷前往市場水位
-// ==========================================
 function openWaterLevelDetail(index) {
     if (!state.stocks || !state.stocks[index]) return;
-    
-    // 直接呼叫 waterlevel.js 的走勢圖 Modal
     if (typeof openTrendModal === 'function') {
         openTrendModal(index);
     } else if (typeof switchTab === 'function') {
@@ -777,9 +747,6 @@ function openWaterLevelDetail(index) {
     }
 }
 
-// ==========================================
-// 持股編輯與刪除邏輯
-// ==========================================
 let editingIndex = -1;
 
 function openEditModal(index) {
@@ -855,9 +822,6 @@ function promptRemoveStock(index) {
     }
 }
 
-// ==========================================
-// 手動單筆新增與 Fugle 報價整合
-// ==========================================
 function populateQuickSelect() {
     const select = document.getElementById('quick-select-stock');
     if (!select) return;
@@ -899,7 +863,6 @@ function executeMergeOrAdd(newStock) {
         state.stocks.push(targetStock);
     }
 
-    // 由交易簿全量回推股數、成本與均價（SSOT 機制）
     if (typeof recalculateStockFromTransactions === 'function') {
         recalculateStockFromTransactions(targetStock);
     }
@@ -1035,7 +998,6 @@ function syncStockPriceBySymbol(symbol, price, changePercent = 0, intradayQuote 
     if (!symbol || !Number.isFinite(Number(price)) || Number(price) <= 0) return;
     const targetSymbol = String(symbol).toUpperCase();
 
-    // 同步主頁面持股 (state.stocks)
     if (Array.isArray(state.stocks)) {
         state.stocks.forEach(s => {
             if ((s.symbol || '').toUpperCase() === targetSymbol) {
@@ -1047,7 +1009,6 @@ function syncStockPriceBySymbol(symbol, price, changePercent = 0, intradayQuote 
         });
     }
 
-    // 同步追蹤清單 (state.watchStocks)
     if (Array.isArray(state.watchStocks)) {
         state.watchStocks.forEach(w => {
             if ((w.symbol || '').toUpperCase() === targetSymbol) {
@@ -1083,7 +1044,6 @@ async function fetchLatestPrices() {
         await Promise.all(batch.map(async (stock) => {
             if (!stock || !stock.symbol) return;
 
-            // 快取判斷：若 3 分鐘內已更新且有今日資料，略過重複查詢
             if (stock.lastFetchedAt && (now.getTime() - stock.lastFetchedAt < 180000) && Number(stock.price) > 0) {
                 return;
             }
@@ -1100,7 +1060,6 @@ async function fetchLatestPrices() {
                 const responses = await Promise.all(fetches);
                 if (responses[0] && responses[0].ok) {
                     const quote = await responses[0].json();
-                    // 加強欄位 Optional Chaining 與 Safe Fallback
                     const rawPrice = quote?.closePrice ?? quote?.lastPrice ?? quote?.previousClose;
                     const latestPrice = Number.isFinite(Number(rawPrice)) && Number(rawPrice) > 0 
                         ? Number(rawPrice) 
@@ -1108,15 +1067,19 @@ async function fetchLatestPrices() {
 
                     if (latestPrice > 0) {
                         const changePercent = Number.isFinite(Number(quote?.changePercent)) ? Number(quote.changePercent) : (stock.changePercent || 0);
+                        const tradeVolume = Number(quote?.total?.tradeVolume || quote?.volume || 0);
+
+                        stock.volume = tradeVolume;
+
                         const intradayQuote = {
                             date: todayStr,
                             open: Number(quote?.openPrice) || latestPrice,
                             high: Number(quote?.highPrice) || latestPrice,
                             low: Number(quote?.lowPrice) || latestPrice,
-                            close: latestPrice
+                            close: latestPrice,
+                            volume: tradeVolume
                         };
 
-                        // 呼叫跨頁面雙向同步
                         syncStockPriceBySymbol(stock.symbol, latestPrice, changePercent, intradayQuote);
 
                         if ((Number(stock.shares) || 0) === 0 && !stock.firstPriceDate) {
@@ -1157,14 +1120,12 @@ async function fetchLatestPrices() {
 
     if (lastUpdateEl) {
         if (failedSymbols.length > 0) {
-            // 部分或全部失敗時，條列出未抓取的股票代號
             lastUpdateEl.innerText = `未取得最新價: ${failedSymbols.join(', ')} (使用歷史價格)`;
             if (lastUpdateEl.previousElementSibling) {
                 lastUpdateEl.previousElementSibling.classList.remove('bg-green-500', 'bg-amber-500');
                 lastUpdateEl.previousElementSibling.classList.add('bg-slate-400');
             }
         } else {
-            // 全部成功更新
             const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
             lastUpdateEl.innerText = `最新報價 ${timeStr}`;
             if (lastUpdateEl.previousElementSibling) {
@@ -1175,9 +1136,6 @@ async function fetchLatestPrices() {
     }
 }
 
-// ==========================================
-// 手動更新按鈕：同時更新股票價格與市場水位資料
-// ==========================================
 async function manualRefreshFromChart() {
     const chartCenter = document.getElementById('chart-center-text');
     const marketStatus = document.getElementById('market-update-status');
@@ -1194,17 +1152,14 @@ async function manualRefreshFromChart() {
     try {
         const tasks = [];
 
-        // 1. 更新最新股票價格 (Fugle)
         if (typeof fetchLatestPrices === 'function') {
             tasks.push(fetchLatestPrices());
         }
 
-        // 2. 更新市場水位歷史高低點與走勢資料 (FinMind)
         if (typeof fetchFinmindHighLow === 'function') {
             tasks.push(fetchFinmindHighLow());
         }
 
-        // 3. 更新自選追蹤股票價量 (不計入再平衡)
         if (typeof fetchWatchStockPrices === 'function') {
             tasks.push(fetchWatchStockPrices());
         }
@@ -1235,9 +1190,6 @@ async function manualRefreshFromChart() {
     }
 }
 
-// ==========================================
-// CSV 批次解析與補登交易簿功能
-// ==========================================
 function handleCSVUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -1373,11 +1325,6 @@ function handleCSVUpload(e) {
     reader.readAsText(file);
 }
 
-
-
-// ==========================================
-// 計算持股預估賣出成本（統一委派至 calculateTradingCost）
-// ==========================================
 function calculateEstimatedSellCost(stock, currentPrice) {
   const shares = Number(stock?.shares) || 0;
   const price = Number(currentPrice) || Number(stock?.price) || Number(stock?.costPrice) || 0;
@@ -1389,7 +1336,6 @@ function calculateEstimatedSellCost(stock, currentPrice) {
   return { fee, tax, netValue: netAmount };
 }
 
-// 動態保本成本與均價（統一委派至 calculateAllInCost）
 function getBreakEvenCost(stock, currentPrice) {
   const shares = Number(stock?.shares) || 0;
   if (shares <= 0 || typeof calculateAllInCost !== 'function') {
@@ -1407,7 +1353,6 @@ function getBreakEvenCost(stock, currentPrice) {
   };
 }
 
-// 專為自選追蹤股票更新即時行情與成交量（完全隔離平衡與資產計算）
 async function fetchWatchStockPrices() {
     if (!state.apiKey || !Array.isArray(state.watchStocks) || state.watchStocks.length === 0) return;
     const now = new Date();
@@ -1427,26 +1372,21 @@ async function fetchWatchStockPrices() {
                     : (Number(stock.price) || 0);
 
                 if (latestPrice > 0) {
-                    const prevClose = Number(quote?.previousClose) || latestPrice;
-                    const changePercent = Number.isFinite(Number(quote?.changePercent))
-                        ? Number(quote.changePercent)
-                        : (prevClose > 0 ? ((latestPrice - prevClose) / prevClose) * 100 : 0);
-
-                    stock.change = latestPrice - prevClose;
-                    stock.volume = Number(quote?.total?.tradeVolume || quote?.volume || 0);
-
+                    const changePercent = Number.isFinite(Number(quote?.changePercent)) ? Number(quote.changePercent) : (stock.changePercent || 0);
+                    const tradeVolume = Number(quote?.total?.tradeVolume || quote?.volume || 0);
+                    
+                    stock.volume = tradeVolume;
+                    
                     const intradayQuote = {
                         date: todayStr,
                         open: Number(quote?.openPrice) || latestPrice,
                         high: Number(quote?.highPrice) || latestPrice,
                         low: Number(quote?.lowPrice) || latestPrice,
-                        close: latestPrice
+                        close: latestPrice,
+                        volume: tradeVolume
                     };
 
-                    // 呼叫全域雙向價格同步，自動更新主頁面及追蹤清單相同代號之價格
-                    if (typeof syncStockPriceBySymbol === 'function') {
-                        syncStockPriceBySymbol(stock.symbol, latestPrice, changePercent, intradayQuote);
-                    }
+                    syncStockPriceBySymbol(stock.symbol, latestPrice, changePercent, intradayQuote);
                 }
             }
             if (!stock.name || stock.name === stock.symbol) {
