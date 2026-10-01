@@ -967,70 +967,84 @@ async function fetchFinmindHighLow() {
             const stock = state.stocks[i];
             if (!stock.symbol) continue;
 
-            // 快取判斷：若當日已更新過歷史資料且有高低點紀錄，略過請求以節省 Token 額度
-            if (stock.historyFetchedDate === todayStr && stock.highPrice > 0) {
+            const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
+            
+            console.log(`[FinMind 請求] 正在抓取 ${stock.symbol} (${stock.name})...`);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.error(`[FinMind HTTP 錯誤] ${stock.symbol}: Status ${response.status}`);
                 continue;
             }
 
-            const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
-            
-            const response = await fetch(url);
-            if (!response.ok) continue;
-
             const resData = await response.json();
-            if (resData.msg === "success" && resData.data && resData.data.length > 0) {
-                let validStartIndex = 0;
-
-                for (let j = resData.data.length - 1; j >= 0; j--) {
-                    const day = resData.data[j];
-                    
-                    if (j > 0) {
-                        const prevDay = resData.data[j - 1];
-                        const priceDiffRatio = prevDay.close > 0 ? Math.abs(prevDay.close - day.close) / prevDay.close : 0;
-                        if (priceDiffRatio >= 0.5) {
-                            validStartIndex = j;
-                            break;
-                        }
-                    }
+            
+            // 檢查 API 是否回傳額度超限或其他錯誤訊息
+            if (resData.status !== 200 || resData.msg !== "success") {
+                console.warn(`[FinMind API 回應警告] ${stock.symbol}:`, resData.msg);
+                if (resData.msg && resData.msg.includes("limit")) {
+                    if (typeof showToast === 'function') showToast('FinMind API 額度已達上限！');
+                    break; // 額度耗盡時直接中斷迴圈
                 }
-
-                // 高低點、趨勢圖與水位都使用同一個有效區間，避免除權息前後資料混在一起。
-                const validData = resData.data.slice(validStartIndex).filter(day => Number(day.close) > 0);
-                const historyData = validData.map(day => ({
-                    d: day.date,
-                    o: Number(day.open),
-                    h: Number(day.max),
-                    l: Number(day.min),
-                    c: Number(day.close),
-                    v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
-                }));
-                const highPoint = validData.reduce((best, day) => Number(day.max) > best.price ? { price: Number(day.max), date: day.date } : best, { price: -Infinity, date: '' });
-                const lowPoint = validData.reduce((best, day) => Number(day.min) < best.price ? { price: Number(day.min), date: day.date } : best, { price: Infinity, date: '' });
-
-                if (highPoint.price !== -Infinity && lowPoint.price !== Infinity && historyData.length > 0) {
-                    stock.highPrice = highPoint.price;
-                    stock.highDate = highPoint.date;
-                    stock.lowPrice = lowPoint.price;
-                    stock.lowDate = lowPoint.date;
-                    stock.historyData = historyData;
-                    stock.waterLevelSource = 'finmind';
-                    stock.historyFetchedDate = todayStr; // 標註今日已抓取
-                    updatedCount++;
-                }
+                continue;
             }
-            await delay(200); // 逐筆間隔 200ms 防抖，維護 API 連線穩定度
+
+            if (resData.data && resData.data.length > 0) {
+                // 1. 轉化 API 歷史 K 線
+                const newFetchedHistory = resData.data
+                    .filter(day => Number(day.close) > 0)
+                    .map(day => ({
+                        d: day.date,
+                        o: Number(day.open) || Number(day.close),
+                        h: Number(day.max) || Number(day.close),
+                        l: Number(day.min) || Number(day.close),
+                        c: Number(day.close),
+                        v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
+                    }));
+
+                if (newFetchedHistory.length === 0) continue;
+
+                // 2. 增量合併舊資料與新資料
+                const historyMap = new Map();
+                if (Array.isArray(stock.historyData)) {
+                    stock.historyData.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
+                }
+                newFetchedHistory.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
+
+                const mergedHistory = Array.from(historyMap.values()).sort((a, b) => a.d.localeCompare(b.d));
+
+                // 3. 強制計算並寫入 highPrice / lowPrice
+                let maxItem = mergedHistory[0];
+                let minItem = mergedHistory[0];
+
+                mergedHistory.forEach(item => {
+                    if (item.h >= maxItem.h) maxItem = item;
+                    if (item.l <= minItem.l) minItem = item;
+                });
+
+                stock.highPrice = maxItem.h;
+                stock.highDate = maxItem.d;
+                stock.lowPrice = minItem.l;
+                stock.lowDate = minItem.d;
+                stock.historyData = mergedHistory;
+                stock.waterLevelSource = 'finmind';
+                stock.historyFetchedDate = todayStr;
+                updatedCount++;
+            }
+            await delay(200);
         }
 
         if (updatedCount > 0) {
             saveState();
             renderWaterLevel();
-            if (typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票的高低點與走勢圖`);
+            if (typeof updateAllData === 'function') updateAllData();
+            if (typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票高低點與 09-30 資料`);
         } else {
-            if (typeof showToast === 'function') showToast('未取得任何新資料');
+            if (typeof showToast === 'function') showToast('資料已是最新狀態或未取得新資料');
         }
     } catch (err) {
-        console.error("FinMind Fetch Error:", err);
-        if (typeof showToast === 'function') showToast('API 呼叫失敗，請檢查網路或 Token 額度');
+        console.error("FinMind Fetch 詳細錯誤原因:", err);
+        if (typeof showToast === 'function') showToast(`API 呼叫失敗：${err.message || '請檢查網路或 F12 Console'}`);
     } finally {
         if (btn) {
             btn.innerHTML = originalHTML;

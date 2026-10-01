@@ -1150,21 +1150,20 @@ async function manualRefreshFromChart() {
     }
 
     try {
-        const tasks = [];
+        // 分別包裝任務並追蹤執行結果
+        const priceTask = typeof fetchLatestPrices === 'function' 
+            ? fetchLatestPrices().then(() => true).catch(() => false) 
+            : Promise.resolve(null);
 
-        if (typeof fetchLatestPrices === 'function') {
-            tasks.push(fetchLatestPrices());
-        }
+        const waterlevelTask = typeof fetchFinmindHighLow === 'function' 
+            ? fetchFinmindHighLow().then(() => true).catch(() => false) 
+            : Promise.resolve(null);
 
-        if (typeof fetchFinmindHighLow === 'function') {
-            tasks.push(fetchFinmindHighLow());
-        }
+        const watchTask = typeof fetchWatchStockPrices === 'function' 
+            ? fetchWatchStockPrices().then(() => true).catch(() => false) 
+            : Promise.resolve(null);
 
-        if (typeof fetchWatchStockPrices === 'function') {
-            tasks.push(fetchWatchStockPrices());
-        }
-
-        await Promise.allSettled(tasks);
+        const [priceSuccess, waterlevelSuccess] = await Promise.all([priceTask, waterlevelTask, watchTask]);
 
         saveState();
         updateAllData();
@@ -1172,10 +1171,30 @@ async function manualRefreshFromChart() {
             renderWaterLevel();
         }
 
-        if (typeof showToast === 'function') {
-            showToast('股票價格與市場水位已順利更新完成！');
+        // 精準組合顯示訊息
+        let msg = '';
+        if (priceSuccess === true && waterlevelSuccess === true) {
+            msg = '✅ 即時報價與市場水位皆更新成功！';
+        } else if (priceSuccess === true && waterlevelSuccess === false) {
+            msg = '⚠️ 即時報價已更新，但市場水位更新失敗';
+        } else if (priceSuccess === false && waterlevelSuccess === true) {
+            msg = '⚠️ 市場水位已更新，但即時報價更新失敗';
+        } else if (priceSuccess === false && waterlevelSuccess === false) {
+            msg = '❌ 即時報價與市場水位更新皆失敗';
+        } else {
+            msg = '股票價格更新完成！';
         }
-        if (marketStatus) marketStatus.innerText = `已更新 ${new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
+
+        if (typeof showToast === 'function') {
+            showToast(msg);
+        }
+
+        const nowStr = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+        if (marketStatus) {
+            marketStatus.innerText = (priceSuccess && waterlevelSuccess) 
+                ? `已更新 ${nowStr}` 
+                : `部分更新 ${nowStr}`;
+        }
     } catch (error) {
         console.error('更新資料時發生錯誤:', error);
         if (typeof showToast === 'function') {

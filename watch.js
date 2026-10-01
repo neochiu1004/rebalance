@@ -157,13 +157,17 @@ function openWatchWaterLevel(index) {
 }
 
 // 供 Modal 內一鍵載入當前開啟股票（含追蹤標的）之 FinMind 歷史資料
+// 修正後的 fetchActiveTrendStockHistory 函式 (已移除會引發 CORS 阻擋的 Headers)
 async function fetchActiveTrendStockHistory() {
-    if (!trendChartStock || !state.finmindToken) return;
+    if (!trendChartStock || !state.finmindToken) {
+        if (typeof showToast === 'function') showToast('請先至設定頁確認已輸入 FinMind Token');
+        return;
+    }
 
-    // 計算近 60 天日期
+    // 計算近 1 年 (365 天) 日期
     const endDate = new Date();
     const startDate = new Date();
-    startDate.setDate(endDate.getDate() - 60);
+    startDate.setDate(endDate.getDate() - 365);
 
     const formatDate = (date) => date.toISOString().split('T')[0];
     const startDateStr = formatDate(startDate);
@@ -171,14 +175,9 @@ async function fetchActiveTrendStockHistory() {
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${trendChartStock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
 
     try {
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json'
-            }
-        });
+        // 移除選項物件，使用原生極簡 GET 請求以避開 CORS Preflight 限制
+        const response = await fetch(url);
 
-        // 處理 HTTP 異常狀態（如 402, 403, 429 等）
         if (!response.ok) {
             let errorMsg = `HTTP 錯誤碼: ${response.status}`;
             try {
@@ -186,32 +185,61 @@ async function fetchActiveTrendStockHistory() {
                 if (errJson && errJson.msg) {
                     errorMsg += ` (${errJson.msg})`;
                 }
-            } catch (e) {
-                // 回應非 JSON 格式時保持原訊息
-            }
+            } catch (e) {}
             throw new Error(errorMsg);
         }
 
         const result = await response.json();
 
-        // 檢查 FinMind 回傳的 API 狀態碼
         if (result.status !== 200 && result.msg) {
             throw new Error(`FinMind API 訊息: ${result.msg}`);
         }
 
         if (result.data && result.data.length > 0) {
-            renderTrendChart(result.data);
+            // 轉化 API 歷史數據格式
+            const historyData = result.data
+                .filter(day => Number(day.close) > 0)
+                .map(day => ({
+                    d: day.date,
+                    o: Number(day.open) || Number(day.close),
+                    h: Number(day.max) || Number(day.close),
+                    l: Number(day.min) || Number(day.close),
+                    c: Number(day.close),
+                    v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
+                }));
+
+            // 寫回當前開啟的股票物件並刷新走勢圖
+            trendChartStock.historyData = historyData;
+
+            // 自動計算最高/最低點以解鎖水位
+            let maxItem = historyData[0];
+            let minItem = historyData[0];
+            historyData.forEach(item => {
+                if (item.h >= maxItem.h) maxItem = item;
+                if (item.l <= minItem.l) minItem = item;
+            });
+
+            trendChartStock.highPrice = maxItem.h;
+            trendChartStock.highDate = maxItem.d;
+            trendChartStock.lowPrice = minItem.l;
+            trendChartStock.lowDate = minItem.d;
+
+            saveState();
+            
+            // 隱藏「無資料」提示，繪製圖表
+            const noDataEl = document.getElementById('trend-no-data-msg');
+            if (noDataEl) noDataEl.classList.add('hidden');
+
+            if (typeof renderTrendChart === 'function') renderTrendChart(trendChartStock);
+            if (typeof renderWaterLevel === 'function') renderWaterLevel();
+            if (typeof showToast === 'function') showToast(`成功載入 ${trendChartStock.symbol} 歷史走勢與最新 09-30 報價！`);
         } else {
-            showToast('未取得歷史股價資料', 'warning');
+            if (typeof showToast === 'function') showToast('未取得歷史股價資料');
         }
     } catch (error) {
         console.error('FinMind API 讀取失敗:', error);
-        
-        // 判斷是否為 CORS 或網路連線問題
-        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-            showToast('FinMind API 連線失敗：可能受到 CORS 跨網域限制或網路未連線', 'danger');
-        } else {
-            showToast(`FinMind API 連線失敗：${error.message}`, 'danger');
+        if (typeof showToast === 'function') {
+            showToast(`FinMind API 連線失敗：${error.message}`);
         }
     }
 }
