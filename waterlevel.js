@@ -134,8 +134,28 @@ function updateTrendRangeButtons() {
     });
 }
 
+function adjustForStockSplits(data) {
+    if (!Array.isArray(data) || data.length < 2) return data;
+    for (let i = data.length - 1; i > 0; i--) {
+        const currentClose = Number(data[i].c);
+        const prevClose = Number(data[i - 1].c);
+        if (currentClose > 0 && prevClose > 0 && prevClose / currentClose >= 1.5) {
+            const factor = prevClose / currentClose;
+            for (let j = i - 1; j >= 0; j--) {
+                data[j].o = Number(data[j].o) / factor;
+                data[j].h = Number(data[j].h) / factor;
+                data[j].l = Number(data[j].l) / factor;
+                data[j].c = Number(data[j].c) / factor;
+                data[j].v = Number(data[j].v) * factor;
+            }
+        }
+    }
+    return data;
+}
+
 function getTrendHistory(stock) {
     let history = Array.isArray(stock.historyData) ? [...stock.historyData] : [];
+    history = adjustForStockSplits(history);
     const todayStr = new Date().toISOString().split('T')[0];
 
     if (stock.price > 0) {
@@ -698,10 +718,17 @@ function renderTrendChart(stock) {
     window.stepTrendScrubber = (delta) => {
         const scrubber = document.getElementById('trend-scrubber');
         if (!scrubber) return;
-        let newIndex = parseInt(scrubber.value, 10) + delta;
-        newIndex = Math.max(0, Math.min(newIndex, len - 1));
-        scrubber.value = newIndex;
-        window.onTrendScrubberInput(newIndex);
+        
+        const currentIndex = parseInt(scrubber.value, 10) || 0;
+        const maxIndex = parseInt(scrubber.max, 10) || 0;
+        
+        let newIndex = currentIndex + delta;
+        newIndex = Math.max(0, Math.min(newIndex, maxIndex));
+        
+        if (currentIndex !== newIndex) {
+            scrubber.value = newIndex;
+            window.onTrendScrubberInput(newIndex);
+        }
     };
 
     if (trendScrubber) {
@@ -1020,7 +1047,7 @@ async function fetchFinmindHighLow() {
                 }
                 newFetchedHistory.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
 
-                const mergedHistory = Array.from(historyMap.values()).sort((a, b) => a.d.localeCompare(b.d));
+                const mergedHistory = adjustForStockSplits(Array.from(historyMap.values()).sort((a, b) => a.d.localeCompare(b.d)));
 
                 // 3. 強制計算並寫入 highPrice / lowPrice
                 let maxItem = mergedHistory[0];
@@ -1112,23 +1139,7 @@ async function autoFetchHighLow() {
         let minDate = '';
         let validStartIndex = 0;
 
-        for (let j = dataList.length - 1; j >= 0; j--) {
-            const day = dataList[j];
-            
-            if (day.max > maxPrice) { maxPrice = day.max; maxDate = day.date; }
-            if (day.min < minPrice) { minPrice = day.min; minDate = day.date; }
-
-            if (j > 0) {
-                const prevDay = dataList[j - 1];
-                const priceDiffRatio = Math.abs(prevDay.close - day.close) / prevDay.close;
-                if (priceDiffRatio >= 0.5) {
-                    validStartIndex = j;
-                    break;
-                }
-            }
-        }
-
-        const historyData = dataList.slice(validStartIndex).map(day => ({
+        const rawHistory = dataList.map(day => ({
             d: day.date,
             o: Number(day.open),
             h: Number(day.max),
@@ -1136,6 +1147,13 @@ async function autoFetchHighLow() {
             c: Number(day.close),
             v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
         }));
+
+        const historyData = adjustForStockSplits(rawHistory);
+
+        historyData.forEach(item => {
+            if (item.h > maxPrice) { maxPrice = item.h; maxDate = item.d; }
+            if (item.l < minPrice) { minPrice = item.l; minDate = item.d; }
+        });
 
         if (maxPrice !== -Infinity && minPrice !== Infinity) {
             document.getElementById('hp-price').value = maxPrice;

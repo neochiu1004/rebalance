@@ -282,10 +282,10 @@
             <div class="bg-slate-50 p-2 rounded-xl border border-slate-200 mb-4 space-y-1.5">
                 <div class="flex items-center gap-1.5">
                     <span class="text-[10px] font-bold text-slate-500 shrink-0">👆 點選或拖曳</span>
-                    <button type="button" onclick="stepTrendScrubber(-1)" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0" title="上一個交易日">◀</button>
+                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(-1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="上一個交易日">◀</button>
                     <input type="range" id="trend-scrubber" min="0" max="0" value="0" step="1" oninput="onTrendScrubberInput(this.value)" class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                    <button type="button" onclick="stepTrendScrubber(1)" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0" title="下一個交易日">▶</button>
-                    <span id="trend-scrubber-date" class="text-[10px] font-mono font-bold text-blue-700 shrink-0 min-w-[50px] text-right">--</span>
+                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="下一個交易日">▶</button>
+                    <span id="trend-scrubber-date" class="text-[10px] font-mono font-bold text-blue-700 shrink-0 w-[65px] text-right inline-block">--</span>
                 </div>
                 <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
                     <span class="font-bold text-slate-400">🔍 局部放大視窗</span>
