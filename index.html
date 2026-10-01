@@ -231,7 +231,7 @@
             </div>
 
             <!-- 固定位置的數據資訊列（包含所有固定面板子 ID） -->
-            <div id="fixed-chart-info-bar" class="hidden bg-blue-50/40 border border-blue-100 rounded-xl p-3 mb-4 flex flex-col gap-2 transition-all shadow-sm">
+            <div id="fixed-chart-info-bar" class="hidden bg-blue-50/40 border border-blue-100 rounded-xl p-3 mb-3 flex flex-col gap-2 transition-all shadow-sm">
                 <div class="flex justify-between items-center border-b border-blue-100/60 pb-1.5">
                     <span class="text-[12px] font-black text-blue-700 tracking-wider" id="fixed-info-date">請點擊或滑動圖表</span>
                     <div class="flex items-center gap-1.5">
@@ -247,6 +247,27 @@
                 </div>
                 <div id="fixed-info-transaction" class="hidden bg-white rounded-lg border border-blue-100 p-2 mt-0.5 text-[11px] font-bold space-y-1 shadow-sm">
                     <!-- 交易資訊注入區 -->
+                </div>
+            </div>
+
+            <!-- 走勢圖獨立拖曳選擇與局部縮放列 (移至資訊列下方固定位置) -->
+            <div class="bg-slate-50 p-2 rounded-xl border border-slate-200 mb-3 space-y-1.5">
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[10px] font-bold text-slate-500 shrink-0">👆 點選或拖曳</span>
+                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(-1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="上一個交易日">◀</button>
+                    <input type="range" id="trend-scrubber" min="0" max="0" value="0" step="1" oninput="onTrendScrubberInput(this.value)" class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="下一個交易日">▶</button>
+                    <span id="trend-scrubber-date" class="text-[10px] font-mono font-bold text-blue-700 shrink-0 w-[65px] text-right inline-block">--</span>
+                </div>
+                <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
+                    <span class="font-bold text-slate-400">🔍 局部放大視窗</span>
+                    <div class="flex items-center gap-1">
+                        <button type="button" onclick="zoomWindowTrend(0.5)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">2x</button>
+                        <button type="button" onclick="zoomWindowTrend(0.25)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">4x</button>
+                        <button type="button" onclick="zoomWindowTrend(0.125)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">8x</button>
+                        <button type="button" onclick="zoomWindowTrend(0.0625)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">16x</button>
+                        <button type="button" onclick="resetChartZoom()" class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold active:scale-95">還原全區間</button>
+                    </div>
                 </div>
             </div>
 
@@ -275,27 +296,6 @@
             <div id="trend-chart-viewport" class="relative w-full h-56 sm:h-64 mb-4 overflow-y-auto overflow-x-hidden border border-slate-100 rounded-xl">
                 <div id="trend-chart-canvas-container" class="relative w-full h-full min-h-[224px] transition-[height] duration-200">
                     <canvas id="trendChart"></canvas>
-                </div>
-            </div>
-
-            <!-- 走勢圖獨立拖曳選擇與局部縮放列 (移至兩圖中間) -->
-            <div class="bg-slate-50 p-2 rounded-xl border border-slate-200 mb-4 space-y-1.5">
-                <div class="flex items-center gap-1.5">
-                    <span class="text-[10px] font-bold text-slate-500 shrink-0">👆 點選或拖曳</span>
-                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(-1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="上一個交易日">◀</button>
-                    <input type="range" id="trend-scrubber" min="0" max="0" value="0" step="1" oninput="onTrendScrubberInput(this.value)" class="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
-                    <button type="button" onclick="event.preventDefault(); stepTrendScrubber(1);" class="w-6 h-6 flex items-center justify-center bg-white border border-slate-200 rounded text-slate-600 font-bold active:scale-95 shadow-sm shrink-0 select-none" title="下一個交易日">▶</button>
-                    <span id="trend-scrubber-date" class="text-[10px] font-mono font-bold text-blue-700 shrink-0 w-[65px] text-right inline-block">--</span>
-                </div>
-                <div class="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[10px]">
-                    <span class="font-bold text-slate-400">🔍 局部放大視窗</span>
-                    <div class="flex items-center gap-1">
-                        <button type="button" onclick="zoomWindowTrend(0.5)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">2x</button>
-                        <button type="button" onclick="zoomWindowTrend(0.25)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">4x</button>
-                        <button type="button" onclick="zoomWindowTrend(0.125)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">8x</button>
-                        <button type="button" onclick="zoomWindowTrend(0.0625)" class="px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-700 font-bold active:scale-95">16x</button>
-                        <button type="button" onclick="resetChartZoom()" class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold active:scale-95">還原全區間</button>
-                    </div>
                 </div>
             </div>
             
