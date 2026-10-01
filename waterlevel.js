@@ -695,6 +695,15 @@ function renderTrendChart(stock) {
         }
     };
 
+    window.stepTrendScrubber = (delta) => {
+        const scrubber = document.getElementById('trend-scrubber');
+        if (!scrubber) return;
+        let newIndex = parseInt(scrubber.value, 10) + delta;
+        newIndex = Math.max(0, Math.min(newIndex, len - 1));
+        scrubber.value = newIndex;
+        window.onTrendScrubberInput(newIndex);
+    };
+
     if (trendScrubber) {
         trendScrubber.min = 0;
         trendScrubber.max = len > 0 ? len - 1 : 0;
