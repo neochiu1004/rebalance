@@ -1194,7 +1194,10 @@ function renderWaterLevel() {
     container.innerHTML = state.stocks.map((s, idx) => {
         const nameDisplay = escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.name || s.symbol));
         const currentPrice = s.price || s.costPrice || 0;
-        const costPrice = s.costPrice !== undefined ? s.costPrice : currentPrice;
+        // 與資產總覽統一：個人均價使用含預估賣出手續費及證交稅的損益平衡均價。
+        const costPrice = typeof calculateAllInCost === 'function'
+            ? (calculateAllInCost(s, currentPrice).averageCost || Number(s.costPrice) || currentPrice)
+            : (s.costPrice !== undefined ? s.costPrice : currentPrice);
 
         if (!s.highPrice || s.highPrice <= 0) {
             return `
