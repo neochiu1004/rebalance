@@ -317,15 +317,8 @@ function renderGlobalTradeHistory() {
     if (!container) return;
 
     let allTrans = [];
-    state.stocks.forEach((s, sIdx) => {
-        if (s.transactions) {
-            s.transactions.forEach(t => {
-                allTrans.push({ ...t, stockName: s.name || s.symbol, sIdx });
-            });
-        }
-    });
-
-    allTrans.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // 與 transactions.js 共用同一份彙整邏輯（core.collectAllTransactions）
+    collectAllTransactions(state.stocks).forEach(item => allTrans.push(item));
     if(countEl) countEl.textContent = `(${allTrans.length})`;
 
     if (allTrans.length === 0) {
@@ -362,31 +355,10 @@ function renderGlobalTradeHistory() {
 function deleteGlobalTransaction(stockIdx, transId) {
     if (confirm("確定要刪除這筆交易紀錄嗎？\n系統將自動回滾對應的現金餘額與持股成本。")) {
         const stock = state.stocks[stockIdx];
-        if (!stock || !stock.transactions) return;
-
-        const targetIndex = stock.transactions.findIndex(t => t.id === transId);
-        if (targetIndex === -1) return;
-
-        const targetTrans = stock.transactions[targetIndex];
-        const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
-        const price = Math.max(0, parseFloat(targetTrans.price) || 0);
-        const shares = Math.max(0, parseInt(targetTrans.shares, 10) || 0);
-        const cost = calculateTradingCost({
-            type,
-            price,
-            shares,
-            stock,
-            feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
-        });
-
-        if (type === 'buy') {
-            state.cash = (Number(state.cash) || 0) + cost.netAmount;
-        } else {
-            state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
-        }
-
-        stock.transactions.splice(targetIndex, 1);
-        recalculateStockFromTransactions(stock);
+        if (!stock) return;
+        // 統一走 core 的共用刪除（與個股明細刪除同一條路徑，避免兩邊行為不一致）
+        const deleted = deleteTransactionWithRollback(stock, transId);
+        if (!deleted) return;
 
         saveState();
         renderTradeTab();

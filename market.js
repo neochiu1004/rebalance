@@ -20,9 +20,7 @@ async function fetchBenchmarkHistory(force = false) {
     try {
         const start = new Date(); start.setDate(start.getDate() - 400);
         const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${BENCH_SYMBOL}&start_date=${localDateStr(start)}&token=${state.finmindToken}`;
-        const res = await fetch(url);
-        if (!res.ok) return cache?.data || [];
-        const json = await res.json();
+        const json = typeof apiFetchJson === 'function' ? await apiFetchJson(url) : await (await fetch(url)).json();
         if (!json.data || !json.data.length) return cache?.data || [];
         const data = json.data.filter(d => Number(d.close) > 0).map(d => ({ d: d.date, c: Number(d.close) }));
         try { localStorage.setItem('mce_benchmark_0050', JSON.stringify({ fetchedDate: localDateStr(), data })); } catch {}
@@ -159,9 +157,8 @@ async function ensureIndustryMap() {
     if (!stale) return cache.map || {};
     if (!state.finmindToken) return cache?.map || {};
     try {
-        const res = await fetch(`https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&token=${state.finmindToken}`);
-        if (!res.ok) return cache?.map || {};
-        const json = await res.json();
+        const infoUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&token=' + state.finmindToken;
+        const json = typeof apiFetchJson === 'function' ? await apiFetchJson(infoUrl) : await (await fetch(infoUrl)).json();
         if (!Array.isArray(json.data)) return cache?.map || {};
         const map = {};
         json.data.forEach(row => { if (row.stock_id && row.industry_category) map[String(row.stock_id)] = row.industry_category; });

@@ -6,6 +6,23 @@
 let assetChart = null;
 let dailyPnlChart = null;
 
+// 盈虧趨勢／每日績效顯示區間（天數，0 = 全部）
+let dailyPnlRangeDays = 60;
+function sliceDailyRows(rows) {
+    return dailyPnlRangeDays > 0 ? rows.slice(-dailyPnlRangeDays) : rows.slice();
+}
+function setDailyPnlRange(days) {
+    dailyPnlRangeDays = Number(days) || 0;
+    document.querySelectorAll('.daily-range-btn').forEach(btn => {
+        const active = Number(btn.dataset.days) === dailyPnlRangeDays;
+        btn.classList.toggle('bg-slate-900', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-700', !active);
+    });
+    renderDailyPerformanceTable();
+}
+
 // --- 全域格式化常數 ---
 const fmt = (num) => new Intl.NumberFormat('en-US').format(Math.round(num));
 const fmtCurrency = (num) => `NT$ ${fmt(num)}`;
@@ -68,7 +85,29 @@ function getTransactionType(transaction) {
     return transaction.type === 'buy' || transaction.type === '買進' ? 'buy' : 'sell';
 }
 
+// 每日歷史是全站最重的計算（天數 × 持股 × 交易重演），而 updateAllData 會被各模組
+// 頻繁呼叫。以狀態簽名快取：簽名不變就直接回傳上次結果，避免重複重演整段歷史。
+let dailyHistoryCache = { signature: null, rows: null };
+function dailyHistorySignature() {
+    const stockPart = (state.stocks || []).map(s => [
+        s.symbol, s.shares, s.price, s.costPrice, s.paidCost, s.realizedPnl,
+        Array.isArray(s.historyData) ? s.historyData.length : 0,
+        Array.isArray(s.historyData) && s.historyData.length ? `${s.historyData[s.historyData.length - 1].d}:${s.historyData[s.historyData.length - 1].c}` : '',
+        Array.isArray(s.transactions) ? s.transactions.length : 0,
+        Array.isArray(s.transactions) && s.transactions.length ? s.transactions[0].id : ''
+    ].join('|')).join(';');
+    const flowPart = (state.cashFlows || []).map(f => `${f.date}:${f.amount}`).join(',');
+    return [localDateStr(), state.cash, stockPart, flowPart].join('#');
+}
 function calculateDailyPortfolioHistory() {
+    const signature = dailyHistorySignature();
+    if (dailyHistoryCache.signature === signature && dailyHistoryCache.rows) return dailyHistoryCache.rows;
+    const rows = calculateDailyPortfolioHistoryUncached();
+    dailyHistoryCache = { signature, rows };
+    return rows;
+}
+
+function calculateDailyPortfolioHistoryUncached() {
     const stocksWithHistory = (state.stocks || []).filter(stock =>
         Array.isArray(stock.historyData) && stock.historyData.length > 0
     ).map(stock => ({
@@ -255,7 +294,7 @@ function renderDailyPnlChart(rows) {
     }
 
     section.classList.remove('hidden');
-    const displayRows = rows.slice(-60);
+    const displayRows = sliceDailyRows(rows);
     const latest = displayRows[displayRows.length - 1];
     const pnlClass = latest.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
     const cumulativeClass = latest.cumulativePnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
@@ -351,7 +390,7 @@ function renderDailyPerformanceTable() {
         return;
     }
 
-    const displayRows = rows.slice(-60).reverse();
+    const displayRows = sliceDailyRows(rows).reverse();
     const color = value => value >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
     container.innerHTML = `
         <div class="glass-card overflow-hidden">

@@ -18,9 +18,21 @@
 - [x] F10 AI 組合解讀：使用既有 Gemini API Key 產生組合風險與建議摘要（設定頁）（reports.js）
 - [x] F11 PWA＋深色模式：manifest＋Service Worker（網路優先快取）、深色模式切換（設定頁）
 
-## 後續未排（中低優先，待 neo 指示）
-- [ ] 開啟效能：updateAllData 重複計算整合、輸入防抖
-- [ ] trade.js 與 transactions.js 交易邏輯統一
-- [ ] 單元測試＋GitHub Actions CI
-- [ ] innerHTML 跳脫統一、備份匯入欄位驗證強化
-- [ ] 趨勢圖區間切換與 XIRR（現金流加權年化）
+## 第二批優化與功能（2026-10-29 neo 核定，依建議順序施作）
+- [x] O1 效能：calculateDailyPortfolioHistory 狀態簽名快取（assets.js）
+- [x] O5 單元測試＋GitHub Actions CI：tests/run-tests.js + GitHub Actions workflow（範本 workflow-test.yml；GitHub App 無 workflows 權限，需手動放至 .github/workflows/test.yml 才會啟用）
+- [x] O3 交易邏輯統一：core.collectAllTransactions / deleteTransactionWithRollback，trade.js 與 transactions.js 共用；修正個股明細刪除的過時警告文字（原本誤稱不回滾，實際會回滾）
+- [x] O4 安全與資料健壯性：validateBackupData 匯入驗證（匯入與 Gist 還原共用把關）、本機自動備份快照（覆蓋前/每日/手動，最多 5 份，可還原）
+- [x] O6 XIRR 資金加權年化（core.computeXirr）＋盈虧趨勢區間切換 30/60/180/全部
+- [x] N7 股利除息行事曆：FinMind TaiwanStockDividend（欄位 2026-10-29 實測：CashExDividendTradingDate / CashDividendPaymentDate / CashEarningsDistribution），預估待領金額
+- [x] N8 警示中心：再平衡偏離、集中度、未實現虧損 ≤-15%、14 天內除息彙整
+- [x] N9 情境模擬：大盤 -5%/-10%/-20% × 個股 Beta 推估組合影響
+- [x] N10 集中度健檢：最大單一、前三大、單一產業占比與門檻警示
+- [x] N11 報稅彙總 CSV：逐筆已實現＋股利，依年匯出附合計
+- [x] N12 Gist 自動同步：opt-in 開關，開啟時比對雲端更新時間，本機未再改動才提示還原（不自動覆蓋）
+- [x] O2 架構第一步：api.js 統一 API 層（逾時/重試/快取/新鮮度標示），market.js 基準與產業兩條已遷移；其餘模組的 fetch 逐步遷移
+
+## 後續未排（待 neo 指示）
+- [ ] api.js 全面遷移（waterlevel／watch／assets 的 fetch 改走統一層）
+- [ ] assets.js／waterlevel.js 大檔拆分
+- [ ] 指數條成交金額／法人買賣超（無可靠免費來源，找到再做）

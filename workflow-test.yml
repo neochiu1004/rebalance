@@ -1,0 +1,22 @@
+# GitHub App 權限不允許直接寫入 .github/workflows/，請把本檔內容放到 .github/workflows/test.yml（GitHub 網頁上傳即可）。
+# 本機已備份一份在 .github/workflows/test.yml（未隨快照推送）。
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: |
+          for f in *.js; do node --check "$f"; done
+      - name: Unit tests
+        run: node tests/run-tests.js

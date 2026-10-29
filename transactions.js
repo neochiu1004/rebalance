@@ -291,7 +291,7 @@ function submitTransaction(e) {
 
 function deleteTransaction(stockIndex, transId) {
     if (typeof showConfirm === 'function') {
-        showConfirm("確定要刪除這筆交易紀錄嗎？\n(注意：刪除不會自動回滾現金與持股，需手動校正)", () => executeDeleteTrans(stockIndex, transId));
+        showConfirm("確定要刪除這筆交易紀錄嗎？\n系統將自動回滾對應的現金餘額與持股成本。", () => executeDeleteTrans(stockIndex, transId));
     } else {
         if (confirm("確定要刪除這筆交易紀錄嗎？")) executeDeleteTrans(stockIndex, transId);
     }
@@ -299,32 +299,10 @@ function deleteTransaction(stockIndex, transId) {
 
 function executeDeleteTrans(stockIndex, transId) {
     const stock = state.stocks[stockIndex];
-    if (!stock || !stock.transactions) return;
-
-    const targetIndex = stock.transactions.findIndex(t => t.id === transId);
-    if (targetIndex === -1) return;
-
-    const targetTrans = stock.transactions[targetIndex];
-    const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
-    const price = Math.max(0, parseFloat(targetTrans.price) || 0);
-    const shares = Math.max(0, parseInt(targetTrans.shares, 10) || 0);
-    const cost = calculateTradingCost({
-        type,
-        price,
-        shares,
-        stock,
-        feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
-    });
-
-    // 回滾現金餘額：原買進為扣款，刪除需補回；原賣出為入帳，刪除需扣回
-    if (type === 'buy') {
-        state.cash = (Number(state.cash) || 0) + cost.netAmount;
-    } else {
-        state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
-    }
-
-    stock.transactions.splice(targetIndex, 1);
-    recalculateStockFromTransactions(stock);
+    if (!stock) return;
+    // 統一走 core 的共用刪除：回滾現金 + 重算持股（trade.js 全域刪除共用同一條路徑）
+    const deleted = deleteTransactionWithRollback(stock, transId);
+    if (!deleted) return;
 
     saveState();
     renderTransactionList(stockIndex);

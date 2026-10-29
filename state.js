@@ -40,6 +40,8 @@ const state = {
     dividends: Array.isArray(storedDividends) ? storedDividends : [],
     gistToken: localStorage.getItem('mce_gist_token') || '',
     gistId: localStorage.getItem('mce_gist_id') || '',
+    gistAutoSync: localStorage.getItem('mce_gist_auto_sync') === '1',
+    gistLastSyncAt: localStorage.getItem('mce_gist_last_sync_at') || '',
     apiKey: localStorage.getItem('mce_apikey') || '',
     geminiApiKey: localStorage.getItem('mce_gemini_apikey') || '',
     finmindToken: localStorage.getItem('mce_finmind_token') || '',
@@ -86,6 +88,9 @@ function saveState() {
     safeSetItem('mce_dividends', JSON.stringify(state.dividends || []));
     safeSetItem('mce_gist_token', state.gistToken || '');
     safeSetItem('mce_gist_id', state.gistId || '');
+    safeSetItem('mce_gist_auto_sync', state.gistAutoSync ? '1' : '0');
+    safeSetItem('mce_gist_last_sync_at', state.gistLastSyncAt || '');
+    safeSetItem('mce_local_modified_at', String(Date.now()));
 }
 
 // 輔助函式：判斷是否為 ETF 或槓桿型 (預設自動納入均分)
@@ -109,6 +114,55 @@ function buildBackupData() {
         stocks: state.stocks,
         watchStocks: state.watchStocks || []
     };
+}
+
+
+// ---------- 備份驗證（匯入與雲端還原共用，擋下壞檔覆蓋好資料） ----------
+function validateBackupData(data) {
+    const errors = [];
+    if (!data || typeof data !== 'object') errors.push('備份不是物件');
+    else {
+        if (!Array.isArray(data.stocks)) errors.push('stocks 必須是陣列');
+        if (typeof data.cash !== 'number' || !Number.isFinite(data.cash)) errors.push('cash 必須是有限數字');
+        if (Array.isArray(data.stocks)) {
+            if (data.stocks.length > 500) errors.push('持股筆數異常（>500）');
+            data.stocks.forEach((s, i) => {
+                if (!s || typeof s !== 'object') { errors.push(`stocks[${i}] 不是物件`); return; }
+                if (typeof s.symbol !== 'string' || !s.symbol || s.symbol.length > 16) errors.push(`stocks[${i}] 代號無效`);
+                if (s.shares !== undefined && (!Number.isFinite(Number(s.shares)) || Number(s.shares) < 0)) errors.push(`stocks[${i}] 股數無效`);
+                if (s.transactions !== undefined && !Array.isArray(s.transactions)) errors.push(`stocks[${i}] 交易紀錄格式錯誤`);
+                if (Array.isArray(s.transactions) && s.transactions.length > 5000) errors.push(`stocks[${i}] 交易紀錄筆數異常`);
+            });
+        }
+        if (data.cashFlows !== undefined && !Array.isArray(data.cashFlows)) errors.push('cashFlows 格式錯誤');
+        if (data.dividends !== undefined && !Array.isArray(data.dividends)) errors.push('dividends 格式錯誤');
+    }
+    return { ok: errors.length === 0, errors };
+}
+
+// ---------- 本機自動備份快照（覆蓋匯入前、每日首次、或手動建立；保留最近 5 份） ----------
+function listLocalSnapshots() {
+    return readStoredJson('mce_snapshots', []);
+}
+function createLocalSnapshot(reason = 'manual') {
+    try {
+        const snapshots = listLocalSnapshots();
+        snapshots.unshift({ at: new Date().toISOString(), reason, data: buildBackupData() });
+        safeSetItem('mce_snapshots', JSON.stringify(snapshots.slice(0, 5)));
+        return true;
+    } catch (error) {
+        console.warn('建立本機快照失敗', error);
+        return false;
+    }
+}
+function restoreLocalSnapshot(index) {
+    const snapshots = listLocalSnapshots();
+    const snap = snapshots[index];
+    if (!snap || !snap.data) return false;
+    const check = validateBackupData(snap.data);
+    if (!check.ok) return false;
+    processImport(snap.data);
+    return true;
 }
 
 function exportBackup() {
@@ -152,6 +206,13 @@ function importBackup(e) {
 }
 
 function processImport(data) {
+    const validation = validateBackupData(data);
+    if (!validation.ok) {
+        console.warn('匯入驗證失敗', validation.errors);
+        if (typeof showToast === 'function') showToast('資料格式不符，已取消還原：' + validation.errors[0]);
+        return;
+    }
+    createLocalSnapshot('before-import');
     state.cash = data.cash || 0;
     state.targetStockRatio = data.targetStockRatio !== undefined ? data.targetStockRatio : 50;
     state.deviation = data.deviation !== undefined ? data.deviation : 5;

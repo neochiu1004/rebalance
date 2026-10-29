@@ -259,3 +259,68 @@ function recalculateStockFromTransactions(stock) {
     stock.costPrice = currentShares > 0 ? (currentPaidCost / currentShares) : 0;
     stock.realizedPnl = Math.round(currentRealizedPnl);
 }
+
+// ---------- 共用交易彙整／刪除（trade.js 與 transactions.js 統一走這裡） ----------
+// 彙整全部持股的交易紀錄，附股票名稱與持股索引，依日期新→舊排序。
+function collectAllTransactions(stocks) {
+    const all = [];
+    (stocks || []).forEach((s, sIdx) => {
+        (Array.isArray(s.transactions) ? s.transactions : []).forEach(tx => {
+            all.push({ ...tx, stockName: s.name || s.symbol, stockSymbol: s.symbol || '', sIdx });
+        });
+    });
+    return all.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+// 刪除單筆交易並回滾現金、以交易簿重算持股成本與已實現損益。
+// 成功回傳被刪除的交易，找不到回傳 null。UI 刷新由呼叫端各自負責。
+function deleteTransactionWithRollback(stock, transId) {
+    if (!stock || !Array.isArray(stock.transactions)) return null;
+    const targetIndex = stock.transactions.findIndex(t => t.id === transId);
+    if (targetIndex === -1) return null;
+    const targetTrans = stock.transactions[targetIndex];
+    const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
+    const cost = calculateTradingCost({
+        type,
+        price: Math.max(0, parseFloat(targetTrans.price) || 0),
+        shares: Math.max(0, parseInt(targetTrans.shares, 10) || 0),
+        stock,
+        feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
+    });
+    if (typeof state !== 'undefined') {
+        if (type === 'buy') state.cash = (Number(state.cash) || 0) + cost.netAmount;
+        else state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
+    }
+    stock.transactions.splice(targetIndex, 1);
+    recalculateStockFromTransactions(stock);
+    return targetTrans;
+}
+
+// ---------- XIRR（資金加權年化報酬） ----------
+// flows: [{date, amount}]，amount > 0 代表投資人投入組合（入金），< 0 代表取出（出金）。
+// 以二分法求使 NPV = 0 的年化利率；資料不足或無解時回傳 null。
+function computeXirr(flows, terminalValue, terminalDate) {
+    if (!Array.isArray(flows) || flows.length === 0) return null;
+    const end = terminalDate || localDateStr();
+    const events = flows
+        .filter(f => f && f.date && Number.isFinite(Number(f.amount)) && Number(f.amount) !== 0)
+        .map(f => ({ date: String(f.date), amount: -Number(f.amount) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    if (!events.length || !(Number(terminalValue) > 0)) return null;
+    events.push({ date: end, amount: Number(terminalValue) });
+    const t0 = new Date(events[0].date + 'T00:00:00').getTime();
+    if (!Number.isFinite(t0)) return null;
+    const years = (d) => (new Date(d + 'T00:00:00').getTime() - t0) / (365 * 24 * 3600 * 1000);
+    if (years(end) <= 0.01) return null;
+    const npv = (rate) => events.reduce((sum, e) => sum + e.amount / Math.pow(1 + rate, years(e.date)), 0);
+    let lo = -0.9999, hi = 10;
+    let flo = npv(lo), fhi = npv(hi);
+    if (!Number.isFinite(flo) || !Number.isFinite(fhi) || flo * fhi > 0) return null;
+    for (let i = 0; i < 100; i++) {
+        const mid = (lo + hi) / 2;
+        const fm = npv(mid);
+        if (Math.abs(fm) < 0.01) return mid;
+        if (flo * fm < 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+    }
+    return (lo + hi) / 2;
+}

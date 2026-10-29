@@ -208,6 +208,7 @@ async function gistSyncUpload() {
             ? await gistApi(`/${state.gistId}`, { method: 'PATCH', body: JSON.stringify(payload) })
             : await gistApi('', { method: 'POST', body: JSON.stringify(payload) });
         state.gistId = result.id;
+        state.gistLastSyncAt = new Date().toISOString();
         saveState();
         const idEl = document.getElementById('gist-id-input');
         if (idEl) idEl.value = result.id;
