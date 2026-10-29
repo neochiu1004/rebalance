@@ -232,7 +232,8 @@ async function fetchActiveTrendStockHistory() {
 
             if (typeof renderTrendChart === 'function') renderTrendChart(trendChartStock);
             if (typeof renderWaterLevel === 'function') renderWaterLevel();
-            if (typeof showToast === 'function') showToast(`成功載入 ${trendChartStock.symbol} 歷史走勢與最新 09-30 報價！`);
+            const latestHistoryDate = historyData[historyData.length - 1]?.d;
+            if (typeof showToast === 'function') showToast(`成功載入 ${trendChartStock.symbol} 歷史走勢與最新 ${latestHistoryDate ? latestHistoryDate.slice(5) : ''} 報價！`);
         } else {
             if (typeof showToast === 'function') showToast('未取得歷史股價資料');
         }

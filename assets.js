@@ -137,9 +137,13 @@ function calculateDailyPortfolioHistory() {
     const todayStr = new Date().toISOString().split('T')[0];
     if (rows.length > 0 && rows[rows.length - 1].date < todayStr) {
         let currentStockValue = 0;
-        (state.stocks || []).forEach(s => {
-            const currentPrice = Number(s.price) || Number(s.costPrice) || 0;
-            currentStockValue += (Number(s.shares) || 0) * currentPrice;
+        // 今日列沿用與歷史列相同的股票範圍（只有 historyData 的持股）。
+        // 舊寫法改用全部持股，會把無歷史資料持股的整筆市值灌進今日漲跌，
+        // 造成累計盈虧與上方總盈虧對不起來。
+        seriesState.forEach(series => {
+            const livePrice = Number(series.stock.price) || 0;
+            const currentPrice = livePrice > 0 ? livePrice : (series.currentPrice || Number(series.stock.costPrice) || 0);
+            if (series.shares > 0) currentStockValue += series.shares * currentPrice;
         });
         const currentCash = Number(state.cash) || 0;
         rows.push({
@@ -159,6 +163,24 @@ function calculateDailyPortfolioHistory() {
         row.cumulativePnl = cumulativePnl;
         previousTotal = row.totalValue;
     });
+    // 校準累計盈虧，使最後一筆與上方「目前總盈虧」一致。
+    // 每日變化只反映歷史區間內的總資產增減，起點預設為 0；
+    // 但上方總盈虧是以成本為基準（現值－含賣出手續費／交易稅的總成本），
+    // 兩者基準不同必然對不起來。差額（區間開始前已存在的未實現盈虧、
+    // 無歷史資料持股的盈虧、預估賣出成本）以固定偏移併入累計起點，
+    // 每日盈虧的變化量維持不變，最後一筆累計即等於目前總盈虧。
+    if (rows.length > 0 && typeof calculatePortfolioState === 'function') {
+        try {
+            const metrics = calculatePortfolioState();
+            const targetCumulative = Number(metrics && metrics.totalGrossPnL);
+            if (Number.isFinite(targetCumulative)) {
+                const offset = targetCumulative - rows[rows.length - 1].cumulativePnl;
+                if (offset !== 0) rows.forEach(row => { row.cumulativePnl += offset; });
+            }
+        } catch (error) {
+            console.warn('累計盈虧校準失敗，沿用原始累計值', error);
+        }
+    }
     return rows;
 }
 
@@ -297,7 +319,7 @@ function renderDailyPnlChart(rows) {
     updateSummaryAt(displayRows.length - 1);
 
     const source = document.getElementById('daily-pnl-source');
-    if (source) source.textContent = `資料截至 ${latest.date}（每日手動更新資料最後一筆）`;
+    if (source) source.textContent = `資料截至 ${latest.date}，累計盈虧已與上方目前總盈虧對齊`;
 }
 
 function renderDailyPerformanceTable() {

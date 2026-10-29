@@ -971,7 +971,8 @@ function renderTrendChart(stock) {
 // ==========================================
 // 一鍵批次抓取所有持股近 1 年高低點與歷史走勢
 // ==========================================
-async function fetchFinmindHighLow() {
+async function fetchFinmindHighLow(options = {}) {
+    const isAuto = options && options.auto === true;
     if (!state.finmindToken) {
         if (typeof showToast === 'function') showToast('請先至設定頁輸入 FinMind Token');
         return;
@@ -990,6 +991,7 @@ async function fetchFinmindHighLow() {
     }
 
     let updatedCount = 0;
+    let latestDataDate = null;
     const today = new Date();
     const lastYear = new Date(today);
     lastYear.setDate(today.getDate() - 365);
@@ -1002,6 +1004,9 @@ async function fetchFinmindHighLow() {
         for (let i = 0; i < state.stocks.length; i++) {
             const stock = state.stocks[i];
             if (!stock.symbol) continue;
+
+            // 今日已抓過的股票直接跳過：避免每次開啟都重抓並重複跳出更新提示。
+            if (stock.historyFetchedDate === todayStr && Array.isArray(stock.historyData) && stock.historyData.length > 0) continue;
 
             const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;
             
@@ -1065,6 +1070,8 @@ async function fetchFinmindHighLow() {
                 stock.historyData = mergedHistory;
                 stock.waterLevelSource = 'finmind';
                 stock.historyFetchedDate = todayStr;
+                const mergedLatestDate = mergedHistory[mergedHistory.length - 1]?.d;
+                if (mergedLatestDate && (!latestDataDate || mergedLatestDate > latestDataDate)) latestDataDate = mergedLatestDate;
                 updatedCount++;
             }
             await delay(200);
@@ -1074,8 +1081,10 @@ async function fetchFinmindHighLow() {
             saveState();
             renderWaterLevel();
             if (typeof updateAllData === 'function') updateAllData();
-            if (typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票高低點與 09-30 資料`);
-        } else {
+            // 日期改用實際抓到的最後一筆歷史資料日期，不再寫死 09-30；
+            // 自動更新（開啟頁面時）不跳提示，手動更新才顯示。
+            if (!isAuto && typeof showToast === 'function') showToast(`成功更新 ${updatedCount} 檔股票高低點與 ${latestDataDate ? latestDataDate.slice(5) : todayStr.slice(5)} 資料`);
+        } else if (!isAuto) {
             if (typeof showToast === 'function') showToast('資料已是最新狀態或未取得新資料');
         }
     } catch (err) {
