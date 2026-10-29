@@ -28,6 +28,7 @@ const storedWatchStocks = readStoredJson('mce_watch_stocks', []);
 const storedCashFlows = readStoredJson('mce_cash_flows', []);
 const storedDividends = readStoredJson('mce_dividends', []);
 
+
 const state = {
     cash: Number.isFinite(parseFloat(localStorage.getItem('mce_cash'))) ? parseFloat(localStorage.getItem('mce_cash')) : 0,
     targetStockRatio: Number.isFinite(parseFloat(localStorage.getItem('mce_target_stock'))) ? parseFloat(localStorage.getItem('mce_target_stock')) : 50,
@@ -37,6 +38,8 @@ const state = {
     watchStocks: Array.isArray(storedWatchStocks) ? storedWatchStocks : [],
     cashFlows: Array.isArray(storedCashFlows) ? storedCashFlows : [],
     dividends: Array.isArray(storedDividends) ? storedDividends : [],
+    gistToken: localStorage.getItem('mce_gist_token') || '',
+    gistId: localStorage.getItem('mce_gist_id') || '',
     apiKey: localStorage.getItem('mce_apikey') || '',
     geminiApiKey: localStorage.getItem('mce_gemini_apikey') || '',
     finmindToken: localStorage.getItem('mce_finmind_token') || '',
@@ -81,6 +84,8 @@ function saveState() {
     safeSetItem('mce_watch_stocks', JSON.stringify(slimStocksForSave(state.watchStocks)));
     safeSetItem('mce_cash_flows', JSON.stringify(state.cashFlows || []));
     safeSetItem('mce_dividends', JSON.stringify(state.dividends || []));
+    safeSetItem('mce_gist_token', state.gistToken || '');
+    safeSetItem('mce_gist_id', state.gistId || '');
 }
 
 // 輔助函式：判斷是否為 ETF 或槓桿型 (預設自動納入均分)
@@ -90,8 +95,8 @@ function isETFOrLeveraged(symbol, name) {
     return s.endsWith('L') || s.endsWith('D') || s.startsWith('00') || n.includes('正2') || n.includes('反1') || n.includes('ETF');
 }
 
-function exportBackup() {
-    const data = {
+function buildBackupData() {
+    return {
         version: "14.0",
         exportAt: new Date().toISOString(),
         cash: state.cash,
@@ -104,6 +109,10 @@ function exportBackup() {
         stocks: state.stocks,
         watchStocks: state.watchStocks || []
     };
+}
+
+function exportBackup() {
+    const data = buildBackupData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

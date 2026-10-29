@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0F172A">
+    <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="再平衡">
@@ -117,6 +119,14 @@
         @media (min-width: 640px) {
             #app-content { padding-left: 1.5rem; padding-right: 1.5rem; }
         }
+        html.dark body { background: #0B1220 !important; }
+        html.dark .glass-card { background: rgba(30,41,59,.94) !important; border-color: #334155 !important; }
+        html.dark .text-slate-900, html.dark .text-slate-800 { color: #E2E8F0 !important; }
+        html.dark .text-slate-700, html.dark .text-slate-600, html.dark .text-slate-500 { color: #94A3B8 !important; }
+        html.dark .bg-white { background-color: #1E293B !important; }
+        html.dark .bg-slate-50, html.dark .bg-slate-100 { background-color: #16213A !important; }
+        html.dark .border-slate-100, html.dark .border-slate-200, html.dark .border-slate-50 { border-color: #334155 !important; }
+        html.dark input, html.dark select, html.dark textarea { background-color: #0F172A !important; color: #E2E8F0 !important; border-color: #334155 !important; }
     </style>
 </head>
 <body class="text-slate-900 antialiased pb-20">
@@ -490,6 +500,7 @@
                 </div>
             </div>
 
+            <div id="market-bar"></div>
             <div class="mb-8">
                 <div class="text-5xl font-black text-slate-900 tracking-tight" id="total-asset-value">0</div>
                 <div id="total-pnl-summary" class="hidden glass-card mt-4 p-4 flex flex-col gap-1">
@@ -582,6 +593,18 @@
                         </div>
                     </div>
                     <div id="daily-performance-container"></div>
+                    <div id="benchmark-card" class="glass-card p-4 mb-6 hidden">
+                        <div class="flex justify-between items-start mb-3">
+                            <div><h2 class="text-xl font-black text-slate-900">組合 vs 大盤</h2><p class="text-[10px] font-semibold text-slate-400 mt-1">近 60 個交易日累計報酬對照（基準：0050）</p></div>
+                            <div id="benchmark-stats" class="flex gap-5"></div>
+                        </div>
+                        <div class="relative h-44"><canvas id="benchmark-chart"></canvas></div>
+                    </div>
+                    <div id="industry-card" class="glass-card p-4 mb-6 hidden">
+                        <h2 class="text-xl font-black text-slate-900 mb-2">產業配置</h2>
+                        <div id="industry-body"></div>
+                    </div>
+                    <div id="feature-cards"></div>
                 </div>
             </div>
         </section>
@@ -607,6 +630,7 @@
                 <p class="text-xs text-slate-400 font-semibold tracking-wide">僅計算目標權重變大於 0 的持股，現金視為債券部位</p>
             </div>
 
+            <div id="rebalance-alerts"></div>
             <!-- 1. 目前股票水位核心看板 -->
             <div class="glass-card p-6 mb-4 relative overflow-hidden">
                 <div class="flex justify-between items-start mb-4">
@@ -765,7 +789,36 @@
                     <button onclick="saveApiKey()" class="bg-slate-900 hover:bg-slate-800 text-white rounded-xl px-5 font-bold transition-all shadow-sm active:scale-95">儲存</button>
                 </div>
             </div>
-        </section>
+                    <div class="glass-card p-5 mb-8 border-t-4 border-t-emerald-500">
+                <h2 class="font-bold text-slate-800 mb-2">雲端同步 (GitHub Gist)</h2>
+                <p class="text-xs font-semibold text-slate-400 mb-3">貼上具 gist 權限的 GitHub Token，備份會存到你帳號下的一個私密 Gist，換裝置時用同一組 Token + Gist ID 還原。Token 只存本機、不進備份檔。</p>
+                <div class="flex gap-2 mb-2">
+                    <input type="password" id="gist-token-input" placeholder="GitHub Token (gist)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-mono text-sm focus:outline-none">
+                    <button onclick="saveGistSettings()" class="bg-slate-900 text-white rounded-xl px-5 font-bold">儲存</button>
+                </div>
+                <input type="text" id="gist-id-input" placeholder="Gist ID（第一次上傳後自動產生）" class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-mono text-sm mb-3 focus:outline-none">
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="gistSyncUpload()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm">上傳備份到雲端</button>
+                    <button onclick="gistSyncDownload()" class="bg-slate-900 text-white font-bold py-3 rounded-xl text-sm">從雲端還原</button>
+                </div>
+                <div id="gist-status" class="text-xs font-semibold text-slate-400 mt-2"></div>
+            </div>
+
+            <div class="glass-card p-5 mb-8 border-t-4 border-t-indigo-500">
+                <h2 class="font-bold text-slate-800 mb-2">AI 組合解讀 (Gemini)</h2>
+                <div class="flex gap-2 mb-3">
+                    <input type="password" id="gemini-key-input" placeholder="貼上您的 Gemini API Key" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-mono text-sm focus:outline-none">
+                    <button onclick="saveGeminiKey()" class="bg-slate-900 text-white rounded-xl px-5 font-bold">儲存</button>
+                </div>
+                <button onclick="generateAiSummary()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm">產生 AI 組合解讀</button>
+                <div id="ai-result" class="text-xs font-semibold text-slate-600 mt-3 whitespace-pre-wrap"></div>
+            </div>
+
+            <div class="glass-card p-5 mb-8 border-t-4 border-t-slate-500">
+                <h2 class="font-bold text-slate-800 mb-2">外觀</h2>
+                <button onclick="toggleDarkMode()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm">切換深色 / 淺色模式</button>
+            </div>
+</section>
 
     </main>
 
@@ -804,6 +857,8 @@
     <script src="waterlevel.js"></script>
     <script src="rebalance.js"></script>
     <script src="watch.js"></script>
+    <script src="market.js"></script>
+    <script src="reports.js"></script>
 
     <script>
         const formatStockName = (s) => (!s.name || s.name === s.symbol) ? (s.symbol || '') : `${s.symbol || ''} ${s.name}`;
@@ -924,6 +979,9 @@
                     saveState();
                     if (typeof updateTargetUI === 'function') updateTargetUI();
                     if (typeof updateAllData === 'function') updateAllData();
+            if (typeof initReportFeatures === 'function') initReportFeatures();
+            if (typeof renderMarketFeatures === 'function') renderMarketFeatures();
+            if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
                 });
             }
 
