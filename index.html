@@ -411,6 +411,7 @@
                         <div class="text-sm font-black text-blue-600" id="detail-cost-price">@0</div>
                     </div>
                 </div>
+                <div class="text-[11px] font-bold text-slate-500 mt-2" id="detail-pnl-breakdown"></div>
             </div>
 
             <div class="bg-white px-6 flex border-b border-slate-200 shrink-0">
@@ -452,6 +453,7 @@
                 <div class="flex bg-slate-100 p-1 rounded-2xl">
                     <button type="button" id="btn-type-buy" onclick="setTransType('buy')" class="flex-1 py-2 text-xs font-black rounded-xl bg-white text-emerald-600 shadow-sm transition-all">買入 (Buy)</button>
                     <button type="button" id="btn-type-sell" onclick="setTransType('sell')" class="flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all">賣出 (Sell)</button>
+                    <button type="button" id="btn-type-dividend" onclick="setTransType('dividend')" class="flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all">股利</button>
                 </div>
                 <input type="hidden" id="trans-type" value="buy">
 
@@ -461,12 +463,12 @@
                         <input type="date" id="trans-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-semibold text-xs text-slate-800 focus:outline-none focus:border-blue-500">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交單價</label>
+                        <label id="trans-price-label" class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交單價</label>
                         <input type="number" id="trans-price" step="any" min="0" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 font-bold text-sm text-slate-800 focus:outline-none focus:border-blue-500">
                     </div>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交股數 <span class="text-slate-400 font-normal">(自動計算28折手續費)</span></label>
+                    <label id="trans-shares-label" class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">成交股數 <span class="text-slate-400 font-normal">(自動計算28折手續費)</span></label>
                     <input type="number" id="trans-shares" step="1" min="1" required class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 font-bold text-sm text-slate-800 focus:outline-none focus:border-blue-500">
                 </div>
                 
@@ -494,6 +496,7 @@
                     <div class="text-xs font-bold text-slate-500">目前總盈虧</div>
                     <div class="text-3xl font-black text-green-500 tracking-tight" id="total-pnl-amount">NT$ 0</div>
                     <div class="text-sm font-bold text-green-500" id="total-pnl-percent">0.00%</div>
+                    <div class="text-xs font-bold text-slate-500" id="total-pnl-breakdown"></div>
                 </div>
             </div>
             

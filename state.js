@@ -25,6 +25,8 @@ function escapeHtml(value) {
 
 const storedStocks = readStoredJson('mce_stocks', []);
 const storedWatchStocks = readStoredJson('mce_watch_stocks', []);
+const storedCashFlows = readStoredJson('mce_cash_flows', []);
+const storedDividends = readStoredJson('mce_dividends', []);
 
 const state = {
     cash: Number.isFinite(parseFloat(localStorage.getItem('mce_cash'))) ? parseFloat(localStorage.getItem('mce_cash')) : 0,
@@ -33,23 +35,52 @@ const state = {
     cashFlowFirst: localStorage.getItem('mce_cash_flow_first') !== 'false',
     stocks: Array.isArray(storedStocks) ? storedStocks : [],
     watchStocks: Array.isArray(storedWatchStocks) ? storedWatchStocks : [],
+    cashFlows: Array.isArray(storedCashFlows) ? storedCashFlows : [],
+    dividends: Array.isArray(storedDividends) ? storedDividends : [],
     apiKey: localStorage.getItem('mce_apikey') || '',
     geminiApiKey: localStorage.getItem('mce_gemini_apikey') || '',
     finmindToken: localStorage.getItem('mce_finmind_token') || '',
     rebalanceMode: localStorage.getItem('mce_rebalance_mode') || 'global'
 };
 
+let storageSaveWarned = false;
+function safeSetItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (error) {
+        console.warn(`儲存 ${key} 失敗（可能已超過儲存上限）`, error);
+        if (!storageSaveWarned) {
+            storageSaveWarned = true;
+            if (typeof showToast === 'function') showToast('儲存空間不足，部分資料（歷史價格）可能未保存，請先匯出備份');
+        }
+        return false;
+    }
+}
+
+// 存檔用的持股副本：歷史價格只保留最近 320 筆，避免 localStorage 無上限膨脹（記憶體中的完整資料不受影響）。
+function slimStocksForSave(stocks) {
+    if (!Array.isArray(stocks)) return stocks;
+    return stocks.map(s => {
+        if (!s || !Array.isArray(s.historyData) || s.historyData.length <= 320) return s;
+        const sorted = [...s.historyData].sort((a, b) => String((a && a.d) || '').localeCompare(String((b && b.d) || '')));
+        return { ...s, historyData: sorted.slice(-320) };
+    });
+}
+
 function saveState() {
-    localStorage.setItem('mce_cash', state.cash);
-    localStorage.setItem('mce_target_stock', state.targetStockRatio);
-    localStorage.setItem('mce_deviation', state.deviation);
-    localStorage.setItem('mce_cash_flow_first', state.cashFlowFirst);
-    localStorage.setItem('mce_rebalance_mode', state.rebalanceMode);
-    localStorage.setItem('mce_apikey', state.apiKey);
-    localStorage.setItem('mce_gemini_apikey', state.geminiApiKey);
-    localStorage.setItem('mce_finmind_token', state.finmindToken);
-    localStorage.setItem('mce_stocks', JSON.stringify(state.stocks));
-    localStorage.setItem('mce_watch_stocks', JSON.stringify(state.watchStocks));
+    safeSetItem('mce_cash', state.cash);
+    safeSetItem('mce_target_stock', state.targetStockRatio);
+    safeSetItem('mce_deviation', state.deviation);
+    safeSetItem('mce_cash_flow_first', state.cashFlowFirst);
+    safeSetItem('mce_rebalance_mode', state.rebalanceMode);
+    safeSetItem('mce_apikey', state.apiKey);
+    safeSetItem('mce_gemini_apikey', state.geminiApiKey);
+    safeSetItem('mce_finmind_token', state.finmindToken);
+    safeSetItem('mce_stocks', JSON.stringify(slimStocksForSave(state.stocks)));
+    safeSetItem('mce_watch_stocks', JSON.stringify(slimStocksForSave(state.watchStocks)));
+    safeSetItem('mce_cash_flows', JSON.stringify(state.cashFlows || []));
+    safeSetItem('mce_dividends', JSON.stringify(state.dividends || []));
 }
 
 // 輔助函式：判斷是否為 ETF 或槓桿型 (預設自動納入均分)
@@ -68,6 +99,8 @@ function exportBackup() {
         deviation: state.deviation,
         cashFlowFirst: state.cashFlowFirst,
         rebalanceMode: state.rebalanceMode,
+        cashFlows: state.cashFlows || [],
+        dividends: state.dividends || [],
         stocks: state.stocks,
         watchStocks: state.watchStocks || []
     };
@@ -75,7 +108,7 @@ function exportBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = localDateStr();
     a.download = `rebalance_backup_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
@@ -116,6 +149,8 @@ function processImport(data) {
     state.cashFlowFirst = data.cashFlowFirst !== undefined ? data.cashFlowFirst : true;
     state.rebalanceMode = data.rebalanceMode || 'global';
     state.watchStocks = Array.isArray(data.watchStocks) ? data.watchStocks : [];
+    state.cashFlows = Array.isArray(data.cashFlows) ? data.cashFlows : [];
+    state.dividends = Array.isArray(data.dividends) ? data.dividends : [];
     // API 金鑰不再由備份檔匯入，避免把金鑰散播到下載檔或第三方備份。
     
     state.stocks = data.stocks.map(s => {
@@ -131,6 +166,7 @@ function processImport(data) {
             waterLevelSource: s.waterLevelSource || 'finmind',
             lastFetchedAt: Number.isFinite(s.lastFetchedAt) ? s.lastFetchedAt : null,
             historyFetchedDate: s.historyFetchedDate || null,
+            realizedPnl: Number.isFinite(Number(s.realizedPnl)) ? Number(s.realizedPnl) : 0,
             transactions: s.transactions || [] // 確保新版交易簿相容並保留
         };
 

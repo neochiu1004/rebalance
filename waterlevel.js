@@ -156,7 +156,7 @@ function adjustForStockSplits(data) {
 function getTrendHistory(stock) {
     let history = Array.isArray(stock.historyData) ? [...stock.historyData] : [];
     history = adjustForStockSplits(history);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateStr();
 
     if (stock.price > 0) {
         const quote = stock.intradayQuote || {
@@ -313,10 +313,10 @@ function openHighPointModal(index) {
     const elLpDate = document.getElementById('hp-low-date');
 
     if (elHpPrice) elHpPrice.value = stock.highPrice || price;
-    if (elHpDate) elHpDate.value = stock.highDate || new Date().toISOString().split('T')[0];
+    if (elHpDate) elHpDate.value = stock.highDate || localDateStr();
     
     if (elLpPrice) elLpPrice.value = stock.lowPrice || price;
-    if (elLpDate) elLpDate.value = stock.lowDate || new Date().toISOString().split('T')[0];
+    if (elLpDate) elLpDate.value = stock.lowDate || localDateStr();
     
     const modal = document.getElementById('highpoint-modal');
     const content = document.getElementById('highpoint-modal-content');
@@ -995,10 +995,10 @@ async function fetchFinmindHighLow(options = {}) {
     const today = new Date();
     const lastYear = new Date(today);
     lastYear.setDate(today.getDate() - 365);
-    const startDateStr = lastYear.toISOString().split('T')[0];
+    const startDateStr = localDateStr(lastYear);
 
     const delay = (ms) => new Promise(res => setTimeout(res, ms));
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = localDateStr(today);
 
     try {
         for (let i = 0; i < state.stocks.length; i++) {
@@ -1118,7 +1118,7 @@ async function autoFetchHighLow() {
     try {
         const oneYearAgo = new Date();
         oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-        const startDateStr = oneYearAgo.toISOString().split('T')[0];
+        const startDateStr = localDateStr(oneYearAgo);
 
         const token = state.finmindToken || "";
         if (!token) {

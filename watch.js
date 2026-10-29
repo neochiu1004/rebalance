@@ -11,7 +11,7 @@ function addWatchStock() {
     }
 
     const name = prompt('股票名稱（可略，留空將自動帶入）：', '') || symbol;
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
 
     const newWatch = {
         symbol,
@@ -169,7 +169,7 @@ async function fetchActiveTrendStockHistory() {
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - 365);
 
-    const formatDate = (date) => date.toISOString().split('T')[0];
+    const formatDate = (date) => localDateStr(date);
     const startDateStr = formatDate(startDate);
 
     const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${trendChartStock.symbol}&start_date=${startDateStr}&token=${state.finmindToken}`;

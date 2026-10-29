@@ -2,6 +2,62 @@
 // 共用交易核心：費用、持股、現金與交易紀錄
 // ==========================================
 
+// 本地日期字串（YYYY-MM-DD）。不可用 toISOString()：那是 UTC 日期，
+// 台灣時間凌晨 00:00–08:00 會得到昨天的日期，交易與抓取日期都會錯位一天。
+function localDateStr(date = new Date()) {
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// 記錄一筆非交易現金進出（入金／出金／手動調整現金）。
+// 每日盈虧計算會把這類現金流排除，避免把入金誤算成獲利、出金誤算成虧損。
+function recordCashFlow(amount, date = localDateStr(), note = '現金調整') {
+    const value = Number(amount) || 0;
+    if (!value || typeof state === 'undefined') return null;
+    if (!Array.isArray(state.cashFlows)) state.cashFlows = [];
+    const flow = {
+        id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(),
+        amount: value,
+        date: date || localDateStr(),
+        note
+    };
+    state.cashFlows.push(flow);
+    return flow;
+}
+
+// 登錄一筆現金股利：入帳到交割戶現金並留下股利紀錄（不影響持股與成本）。
+// 股利屬投資收益，不記錄為外部現金流，每日盈虧會在入帳日認列。
+function applyDividend({ stock, amount, date, note = '' }) {
+    const value = Math.round(Number(amount) || 0);
+    if (!stock || value <= 0) throw new Error('股利金額無效');
+    if (typeof state === 'undefined') throw new Error('狀態未初始化');
+    if (!Array.isArray(state.dividends)) state.dividends = [];
+    const record = {
+        id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(),
+        symbol: stock.symbol || '',
+        name: stock.name || stock.symbol || '',
+        amount: value,
+        date: date || localDateStr(),
+        note
+    };
+    state.dividends.push(record);
+    state.cash = (Number(state.cash) || 0) + value;
+    return record;
+}
+
+function sumDividends(symbol = null) {
+    if (typeof state === 'undefined' || !Array.isArray(state.dividends)) return 0;
+    return state.dividends
+        .filter(d => symbol === null || (d.symbol || '') === symbol)
+        .reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+}
+
+function sumRealizedPnl() {
+    if (typeof state === 'undefined' || !Array.isArray(state.stocks)) return 0;
+    return state.stocks.reduce((sum, s) => sum + (Number(s.realizedPnl) || 0), 0);
+}
+
 function isETF(symbol = '', name = '') {
     const normalizedSymbol = String(symbol).toUpperCase();
     const normalizedName = String(name);
@@ -90,6 +146,7 @@ function applyTransaction({
     }
 
     const quantity = Number(shares);
+    let realizedPnl = null;
     const cost = calculateTradingCost({ type, price, shares: quantity, stock, feeOverride });
     if (type === 'sell' && quantity > (Number(stock.shares) || 0)) {
         throw new Error('賣出股數不可大於現有持股');
@@ -116,6 +173,9 @@ function applyTransaction({
         // 賣出只移除售出股數對應的歷史買入成本，避免剩餘持股仍帶著已賣出的成本。
         stock.paidCost = Math.max(0, previousCost - averageBuyCost * quantity);
         if (stock.shares === 0) stock.costPrice = 0;
+        // 已實現損益：賣出淨收入（扣手續費與交易稅）減去售出股數的平均買入成本。
+        realizedPnl = cost.netAmount - averageBuyCost * quantity;
+        stock.realizedPnl = (Number(stock.realizedPnl) || 0) + realizedPnl;
     }
 
     if (syncCash) state.cash = (Number(state.cash) || 0) + (type === 'buy' ? -cost.netAmount : cost.netAmount);
@@ -128,9 +188,10 @@ function applyTransaction({
         fee: cost.fee,
         tax: cost.tax,
         netAmount: cost.netAmount,
-        date: date || new Date().toISOString().split('T')[0],
+        date: date || localDateStr(),
         note,
-        isImported
+        isImported,
+        realizedPnl
     };
     stock.transactions.unshift(transaction);
     return { ...cost, transaction };
@@ -168,6 +229,7 @@ function recalculateStockFromTransactions(stock) {
 
     let currentShares = 0;
     let currentPaidCost = 0;
+    let currentRealizedPnl = 0;
 
     transactions.forEach(t => {
         const type = (t.type === 'buy' || t.type === '買進') ? 'buy' : 'sell';
@@ -186,6 +248,7 @@ function recalculateStockFromTransactions(stock) {
             currentPaidCost += cost.netAmount;
         } else {
             const avgBuyCost = currentShares > 0 ? currentPaidCost / currentShares : 0;
+            currentRealizedPnl += cost.netAmount - avgBuyCost * shares;
             currentShares = Math.max(0, currentShares - shares);
             currentPaidCost = Math.max(0, currentPaidCost - (avgBuyCost * shares));
         }
@@ -194,4 +257,5 @@ function recalculateStockFromTransactions(stock) {
     stock.shares = currentShares;
     stock.paidCost = Math.round(currentPaidCost);
     stock.costPrice = currentShares > 0 ? (currentPaidCost / currentShares) : 0;
+    stock.realizedPnl = Math.round(currentRealizedPnl);
 }

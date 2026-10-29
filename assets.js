@@ -110,11 +110,29 @@ function calculateDailyPortfolioHistory() {
         return { ...series, shares: Math.max(0, startingShares), priceIndex: 0, currentPrice: null };
     });
 
-    const startingCash = (Number(state.cash) || 0) - [...cashEventsByDate.values()].reduce((sum, value) => sum + value, 0);
+    // 非交易現金流（入金／出金／手動調整）：重建現金時要計入餘額，但算每日盈虧時必須排除，
+    // 否則入金會被誤認成獲利、出金被誤認成虧損。
+    const externalFlows = (Array.isArray(state.cashFlows) ? state.cashFlows : [])
+        .filter(flow => flow && flow.date && Number.isFinite(Number(flow.amount)))
+        .map(flow => ({ date: String(flow.date), amount: Number(flow.amount) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    const externalFlowTotalAfterStart = externalFlows
+        .filter(flow => flow.date > initialDate)
+        .reduce((sum, flow) => sum + flow.amount, 0);
+    let externalFlowIndex = externalFlows.findIndex(flow => flow.date > initialDate);
+    if (externalFlowIndex === -1) externalFlowIndex = externalFlows.length;
+
+    const startingCash = (Number(state.cash) || 0) - [...cashEventsByDate.values()].reduce((sum, value) => sum + value, 0) - externalFlowTotalAfterStart;
     let cashValue = startingCash;
     const rows = dates.map((date, index) => {
+        let externalFlowToday = 0;
         if (index > 0) {
             cashValue += cashEventsByDate.get(date) || 0;
+            while (externalFlowIndex < externalFlows.length && externalFlows[externalFlowIndex].date <= date) {
+                externalFlowToday += externalFlows[externalFlowIndex].amount;
+                externalFlowIndex += 1;
+            }
+            cashValue += externalFlowToday;
             seriesState.forEach(series => series.transactions
                 .filter(transaction => transaction.date === date)
                 .forEach(transaction => {
@@ -131,10 +149,10 @@ function calculateDailyPortfolioHistory() {
             }
             if (series.currentPrice !== null && series.shares > 0) stockValue += series.shares * series.currentPrice;
         });
-        return { date, stockValue, cashValue, totalValue: stockValue + cashValue };
+        return { date, stockValue, cashValue, totalValue: stockValue + cashValue, externalFlow: externalFlowToday };
     });
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateStr();
     if (rows.length > 0 && rows[rows.length - 1].date < todayStr) {
         let currentStockValue = 0;
         // 今日列沿用與歷史列相同的股票範圍（只有 historyData 的持股）。
@@ -150,14 +168,15 @@ function calculateDailyPortfolioHistory() {
             date: todayStr,
             stockValue: currentStockValue,
             cashValue: currentCash,
-            totalValue: currentStockValue + currentCash
+            totalValue: currentStockValue + currentCash,
+            externalFlow: externalFlows.slice(externalFlowIndex).reduce((sum, flow) => sum + flow.amount, 0)
         });
     }
 
     let previousTotal = null;
     let cumulativePnl = 0;
     rows.forEach(row => {
-        row.dailyPnl = previousTotal === null ? 0 : row.totalValue - previousTotal;
+        row.dailyPnl = previousTotal === null ? 0 : (row.totalValue - previousTotal) - (Number(row.externalFlow) || 0);
         row.dailyReturn = previousTotal > 0 ? (row.dailyPnl / previousTotal) * 100 : 0;
         cumulativePnl += row.dailyPnl;
         row.cumulativePnl = cumulativePnl;
@@ -172,7 +191,7 @@ function calculateDailyPortfolioHistory() {
     if (rows.length > 0 && typeof calculatePortfolioState === 'function') {
         try {
             const metrics = calculatePortfolioState();
-            const targetCumulative = Number(metrics && metrics.totalGrossPnL);
+            const targetCumulative = Number(metrics && (metrics.totalCombinedPnL ?? metrics.totalGrossPnL));
             if (Number.isFinite(targetCumulative)) {
                 const offset = targetCumulative - rows[rows.length - 1].cumulativePnl;
                 if (offset !== 0) rows.forEach(row => { row.cumulativePnl += offset; });
@@ -411,12 +430,18 @@ function calculatePortfolioState() {
         });
     }
     const targetBeta = (state.targetStockRatio / 100) * targetWeightedBetaSum;
+    const totalRealizedPnl = typeof sumRealizedPnl === 'function' ? sumRealizedPnl() : 0;
+    const totalDividends = typeof sumDividends === 'function' ? sumDividends() : 0;
+    const totalCombinedPnL = totalGrossPnL + totalRealizedPnl + totalDividends;
 
     return {
         totalDisplayStockValue,
         activeStockValue,
         totalTargetWeight,
         totalGrossPnL,
+        totalRealizedPnl,
+        totalDividends,
+        totalCombinedPnL,
         totalPaidCostSum,
         displayTotal,
         displayCashRatio,
@@ -451,14 +476,19 @@ function updateAllData() {
     const summaryEl = document.getElementById('total-pnl-summary');
     if (metrics.totalPaidCostSum > 0 && summaryEl) {
         summaryEl.classList.remove('hidden');
-        const pnlPercent = (metrics.totalGrossPnL / metrics.totalPaidCostSum) * 100;
+        const pnlPercent = (metrics.totalCombinedPnL / metrics.totalPaidCostSum) * 100;
         const pnlAmountEl = document.getElementById('total-pnl-amount');
         const pnlPercentEl = document.getElementById('total-pnl-percent');
         
-        if (pnlAmountEl) pnlAmountEl.innerText = `${metrics.totalGrossPnL >= 0 ? '' : '-'}NT$ ${fmt(Math.abs(metrics.totalGrossPnL))}`;
-        if (pnlPercentEl) pnlPercentEl.innerText = `${metrics.totalGrossPnL >= 0 ? '' : '-'}${Math.abs(pnlPercent).toFixed(2)}%`;
+        if (pnlAmountEl) pnlAmountEl.innerText = `${metrics.totalCombinedPnL >= 0 ? '' : '-'}NT$ ${fmt(Math.abs(metrics.totalCombinedPnL))}`;
+        if (pnlPercentEl) pnlPercentEl.innerText = `${metrics.totalCombinedPnL >= 0 ? '' : '-'}${Math.abs(pnlPercent).toFixed(2)}%`;
+        const breakdownEl = document.getElementById('total-pnl-breakdown');
+        if (breakdownEl) {
+            const fmtSigned = (v) => `${v >= 0 ? '+' : '-'}NT$${fmt(Math.abs(v))}`;
+            breakdownEl.innerText = `未實現 ${fmtSigned(metrics.totalGrossPnL)}｜已實現 ${fmtSigned(metrics.totalRealizedPnl || 0)}｜股利 ${fmtSigned(metrics.totalDividends || 0)}`;
+        }
         
-        if (metrics.totalGrossPnL >= 0) {
+        if (metrics.totalCombinedPnL >= 0) {
             if (pnlAmountEl) pnlAmountEl.className = 'text-3xl font-black text-[#22C55E] tracking-tight';
             if (pnlPercentEl) pnlPercentEl.className = 'text-sm font-bold text-[#22C55E]';
         } else {
@@ -750,7 +780,9 @@ function saveEditCash(e) {
         let calcResult = calculateExpression(inputVal);
         if (toggleEl && toggleEl.checked) calcResult = state.cash + calcResult;
         
-        state.cash = calcResult; 
+        const cashDelta = calcResult - (Number(state.cash) || 0);
+        state.cash = calcResult;
+        if (cashDelta !== 0 && typeof recordCashFlow === 'function') recordCashFlow(cashDelta, localDateStr(), '手動調整現金');
         saveState();
         updateAllData();
         closeCashEditModal();
@@ -965,7 +997,7 @@ async function addStockSubmit(e) {
 
     newStock.transactions.push({
         id: "init_" + Date.now().toString(),
-        date: new Date().toISOString().split('T')[0], 
+        date: localDateStr(), 
         type: 'buy',
         price: costPrice,
         shares: shares,
@@ -1055,7 +1087,7 @@ async function fetchLatestPrices() {
     }
 
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
     const delay = (ms) => new Promise(res => setTimeout(res, ms));
     let updated = false;
     const failedSymbols = [];
@@ -1266,7 +1298,7 @@ function handleCSVUpload(e) {
         const paidCostIdx = idxPaidCost !== -1 ? idxPaidCost : 7;
 
         const requiredLength = Math.max(nameIdx, sharesIdx, avgPriceIdx);
-        const csvImportDate = new Date().toISOString().split('T')[0];
+        const csvImportDate = localDateStr();
 
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
@@ -1397,7 +1429,7 @@ function getBreakEvenCost(stock, currentPrice) {
 async function fetchWatchStockPrices() {
     if (!state.apiKey || !Array.isArray(state.watchStocks) || state.watchStocks.length === 0) return;
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = localDateStr(now);
 
     for (let stock of state.watchStocks) {
         if (!stock || !stock.symbol) continue;

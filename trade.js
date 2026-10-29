@@ -23,7 +23,7 @@ function renderTradeTab() {
         });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateStr();
     const isBuy = tradeConfig.type === 'buy';
 
     container.innerHTML = `

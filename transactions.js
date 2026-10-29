@@ -68,7 +68,9 @@ function renderStockDetailContent() {
     const allInCost = calculateAllInCost(stock, currentPrice);
     const paidCost = allInCost.totalCost;
     
-    const pnl = marketVal - paidCost;
+    const realized = Number(stock.realizedPnl) || 0;
+    const stockDividendsTotal = typeof sumDividends === 'function' ? sumDividends(stock.symbol || '') : 0;
+    const pnl = (marketVal - paidCost) + realized + stockDividendsTotal;
     const pnlPercent = paidCost > 0 ? (pnl / paidCost) * 100 : 0;
     const pnlColor = pnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
     const pnlSign = pnl >= 0 ? '+' : '';
@@ -85,6 +87,11 @@ function renderStockDetailContent() {
         elPnl.className = `text-base font-black ${pnlColor}`;
     }
     if (elShares) elShares.innerText = `${fmt(shares)} 股`;
+    const breakdownEl = document.getElementById('detail-pnl-breakdown');
+    if (breakdownEl) {
+        const fmtSigned = (v) => `${v >= 0 ? '+' : '-'}NT$${fmt(Math.abs(v))}`;
+        breakdownEl.innerText = `未實現 ${fmtSigned(marketVal - paidCost)}｜已實現 ${fmtSigned(realized)}｜股利 ${fmtSigned(stockDividendsTotal)}`;
+    }
     if (elCost) elCost.innerText = `@ ${fmtPrice(allInCost.averageCost || costPrice)}`;
 
     // 切換頁籤按鈕樣式
@@ -109,16 +116,18 @@ function renderStockDetailContent() {
 
 // 渲染歷史交易明細列表
 function renderTransactionList(index) {
+
     const stock = state.stocks[index];
     const container = document.getElementById('transaction-list-container');
     if (!container) return;
     
-    if (!stock.transactions || stock.transactions.length === 0) {
+    const stockDividendsEarly = (Array.isArray(state.dividends) ? state.dividends : []).filter(d => (d.symbol || '') === (stock.symbol || ''));
+    if ((!stock.transactions || stock.transactions.length === 0) && stockDividendsEarly.length === 0) {
         container.innerHTML = '<div class="text-center text-xs font-semibold text-slate-400 py-10 bg-slate-50 rounded-2xl border border-dashed border-slate-200">尚無交易紀錄，點下方按鈕新增第一筆買賣</div>';
         return;
     }
 
-    const sortedTrans = [...stock.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedTrans = [...(stock.transactions || [])].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     container.innerHTML = sortedTrans.map((t, idx) => {
         const isBuy = t.type === 'buy';
@@ -151,6 +160,27 @@ function renderTransactionList(index) {
             </div>
         </div>`;
     }).join('');
+
+    const stockDividends = (Array.isArray(state.dividends) ? state.dividends : []).filter(d => (d.symbol || '') === (stock.symbol || ''));
+    if (stockDividends.length > 0) {
+        container.innerHTML += stockDividends.map(d => `
+        <div class="p-3.5 bg-amber-50 rounded-2xl border border-amber-100 shadow-sm flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-black text-xs shrink-0 shadow-inner">利</div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-black text-slate-800">現金股利</span>
+                        <span class="text-[10px] font-bold text-slate-400">${escapeHtml(d.date || '')}</span>
+                    </div>
+                    <div class="text-[11px] font-medium text-slate-500 mt-0.5">已入帳交割戶現金</div>
+                </div>
+            </div>
+            <div class="text-right shrink-0">
+                <div class="text-sm font-black text-amber-600">+NT$${fmt(Number(d.amount) || 0)}</div>
+                <button onclick="deleteDividend('${d.id}')" class="text-[10px] font-bold text-red-400 hover:text-red-600 mt-1 inline-block">刪除</button>
+            </div>
+        </div>`).join('');
+    }
 }
 
 // 切換新增交易表單的買/賣模式
@@ -158,13 +188,25 @@ function setTransType(type) {
     document.getElementById('trans-type').value = type;
     const btnBuy = document.getElementById('btn-type-buy');
     const btnSell = document.getElementById('btn-type-sell');
-    
-    if (type === 'buy') {
-        if (btnBuy) btnBuy.className = 'flex-1 py-2 text-xs font-black rounded-xl bg-white text-emerald-600 shadow-sm transition-all';
-        if (btnSell) btnSell.className = 'flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all';
+    const btnDiv = document.getElementById('btn-type-dividend');
+    const idle = 'flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all';
+    const activeBase = 'flex-1 py-2 text-xs font-black rounded-xl bg-white shadow-sm transition-all ';
+    if (btnBuy) btnBuy.className = type === 'buy' ? activeBase + 'text-emerald-600' : idle;
+    if (btnSell) btnSell.className = type === 'sell' ? activeBase + 'text-rose-500' : idle;
+    if (btnDiv) btnDiv.className = type === 'dividend' ? activeBase + 'text-amber-600' : idle;
+
+    // 股利模式：單價欄改填股利總額、隱藏股數欄
+    const priceLabel = document.getElementById('trans-price-label');
+    const sharesInput = document.getElementById('trans-shares');
+    const sharesRow = sharesInput ? sharesInput.closest('div') : null;
+    if (type === 'dividend') {
+        if (priceLabel) priceLabel.innerText = '股利總額 (TWD)';
+        if (sharesRow) sharesRow.style.display = 'none';
+        if (sharesInput) sharesInput.removeAttribute('required');
     } else {
-        if (btnSell) btnSell.className = 'flex-1 py-2 text-xs font-black rounded-xl bg-white text-rose-500 shadow-sm transition-all';
-        if (btnBuy) btnBuy.className = 'flex-1 py-2 text-xs font-bold rounded-xl text-slate-400 hover:text-slate-600 transition-all';
+        if (priceLabel) priceLabel.innerText = '成交單價';
+        if (sharesRow) sharesRow.style.display = '';
+        if (sharesInput) sharesInput.setAttribute('required', '');
     }
 }
 
@@ -174,7 +216,7 @@ function openAddTransactionForm() {
     const formModal = document.getElementById('add-transaction-modal');
     if (!formModal) return;
 
-    document.getElementById('trans-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('trans-date').value = localDateStr();
     document.getElementById('trans-price').value = stock.price || stock.costPrice || '';
     document.getElementById('trans-shares').value = '';
     setTransType('buy');
@@ -200,8 +242,30 @@ function submitTransaction(e) {
   const type = document.getElementById('trans-type').value; // 'buy' or 'sell'
   const price = parseFloat(document.getElementById('trans-price').value) || 0;
   const shares = parseInt(document.getElementById('trans-shares').value) || 0;
-  const date = document.getElementById('trans-date').value || new Date().toISOString().split('T')[0];
-  const note = document.getElementById('trans-note').value || '';
+  const date = document.getElementById('trans-date').value || localDateStr();
+  const noteEl = document.getElementById('trans-note');
+  const note = noteEl ? noteEl.value || '' : '';
+
+  if (type === 'dividend') {
+    const amount = parseFloat(document.getElementById('trans-price').value) || 0;
+    if (amount <= 0) {
+      if (typeof showToast === 'function') showToast('請輸入有效的股利總額');
+      return;
+    }
+    try {
+      applyDividend({ stock, amount, date, note });
+    } catch (error) {
+      if (typeof showToast === 'function') showToast(error.message);
+      return;
+    }
+    saveState();
+    closeAddTransactionForm();
+    renderTransactionList(currentTransStockIndex);
+    renderStockDetailContent();
+    if (typeof updateAllData === 'function') updateAllData();
+    if (typeof showToast === 'function') showToast('股利已登錄並入帳現金');
+    return;
+  }
 
   if (price <= 0 || shares <= 0) {
     if (typeof showToast === 'function') showToast('請輸入有效的單價與股數');
@@ -224,6 +288,7 @@ function submitTransaction(e) {
 }
 
 // 刪除單筆交易明細
+
 function deleteTransaction(stockIndex, transId) {
     if (typeof showConfirm === 'function') {
         showConfirm("確定要刪除這筆交易紀錄嗎？\n(注意：刪除不會自動回滾現金與持股，需手動校正)", () => executeDeleteTrans(stockIndex, transId));
@@ -267,4 +332,28 @@ function executeDeleteTrans(stockIndex, transId) {
     if (typeof updateAllData === 'function') updateAllData();
     if (typeof renderGlobalTradeHistory === 'function') renderGlobalTradeHistory();
     if (typeof showToast === 'function') showToast('已刪除交易紀錄並完成現金與持股回滾');
+}
+
+// 刪除股利紀錄：同步扣回當初入帳的現金
+function deleteDividend(dividendId) {
+    if (!Array.isArray(state.dividends)) return;
+    const idx = state.dividends.findIndex(d => d.id === dividendId);
+    if (idx === -1) return;
+    const doDelete = () => {
+        const target = state.dividends[idx];
+        state.cash = Math.max(0, (Number(state.cash) || 0) - (Number(target.amount) || 0));
+        state.dividends.splice(idx, 1);
+        saveState();
+        if (currentTransStockIndex >= 0) {
+            renderTransactionList(currentTransStockIndex);
+            renderStockDetailContent();
+        }
+        if (typeof updateAllData === 'function') updateAllData();
+        if (typeof showToast === 'function') showToast('已刪除股利紀錄並扣回現金');
+    };
+    if (typeof showConfirm === 'function') {
+        showConfirm('確定要刪除這筆股利紀錄嗎？\n現金將同步扣回。', doDelete);
+    } else if (confirm('確定要刪除這筆股利紀錄嗎？現金將同步扣回。')) {
+        doDelete();
+    }
 }
