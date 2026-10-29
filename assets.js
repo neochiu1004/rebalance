@@ -921,7 +921,7 @@ function populateQuickSelect() {
     let html = '<option value="">-- 自現有持股帶入 --</option>';
     if (state && state.stocks) {
         state.stocks.forEach((s, idx) => {
-            html += `<option value="${idx}">${typeof formatStockName === 'function' ? formatStockName(s) : s.symbol}</option>`;
+            html += `<option value="${idx}">${escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.symbol || ''))}</option>`;
         });
     }
     select.innerHTML = html;
@@ -1362,7 +1362,7 @@ function handleCSVUpload(e) {
             const symbol = symbolMap[name] || '';
             const beta = name.includes('正2') ? 2 : 1; 
             
-            if (name && !isNaN(shares) && !isNaN(costPrice)) {
+            if (name && !isNaN(shares) && shares > 0 && !isNaN(costPrice) && costPrice > 0) {
                 const importCost = calculateTradingCost({
                     type: 'buy',
                     price: costPrice,

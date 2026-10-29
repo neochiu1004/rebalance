@@ -132,10 +132,25 @@ function validateBackupData(data) {
                 if (s.shares !== undefined && (!Number.isFinite(Number(s.shares)) || Number(s.shares) < 0)) errors.push(`stocks[${i}] 股數無效`);
                 if (s.transactions !== undefined && !Array.isArray(s.transactions)) errors.push(`stocks[${i}] 交易紀錄格式錯誤`);
                 if (Array.isArray(s.transactions) && s.transactions.length > 5000) errors.push(`stocks[${i}] 交易紀錄筆數異常`);
+                if (Array.isArray(s.transactions)) s.transactions.forEach((t, j) => {
+                    if (!t || typeof t !== 'object') { errors.push(`stocks[${i}] 交易紀錄[${j}] 不是物件`); return; }
+                    // 交易 id 會被插入 inline onclick 字串、date 會被插入 innerHTML：限制格式，擋下引號/標籤注入
+                    if (t.id !== undefined && (typeof t.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(t.id))) errors.push(`stocks[${i}] 交易紀錄[${j}] id 無效`);
+                    if (t.date !== undefined && (typeof t.date !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(t.date))) errors.push(`stocks[${i}] 交易紀錄[${j}] 日期無效`);
+                    ['price', 'shares', 'fee', 'tax', 'netAmount'].forEach(k => {
+                        if (t[k] !== undefined && !Number.isFinite(Number(t[k]))) errors.push(`stocks[${i}] 交易紀錄[${j}] ${k} 無效`);
+                    });
+                    if (t.shares !== undefined && Number(t.shares) < 0) errors.push(`stocks[${i}] 交易紀錄[${j}] 股數無效`);
+                });
             });
         }
         if (data.cashFlows !== undefined && !Array.isArray(data.cashFlows)) errors.push('cashFlows 格式錯誤');
         if (data.dividends !== undefined && !Array.isArray(data.dividends)) errors.push('dividends 格式錯誤');
+        if (Array.isArray(data.dividends)) data.dividends.forEach((d, i) => {
+            if (!d || typeof d !== 'object') { errors.push(`dividends[${i}] 不是物件`); return; }
+            if (d.id !== undefined && (typeof d.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(d.id))) errors.push(`dividends[${i}] id 無效`);
+            if (d.amount !== undefined && !Number.isFinite(Number(d.amount))) errors.push(`dividends[${i}] 金額無效`);
+        });
     }
     return { ok: errors.length === 0, errors };
 }

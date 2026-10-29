@@ -338,8 +338,8 @@ function renderGlobalTradeHistory() {
                     </div>
                     <div class="text-xs text-slate-500 space-x-2">
                         <span>${escapeHtml(t.date)}</span>
-                        <span>成交: ${t.price}</span>
-                        <span>股數: ${t.shares}</span>
+                        <span>成交: ${escapeHtml(String(t.price ?? ''))}</span>
+                        <span>股數: ${escapeHtml(String(t.shares ?? ''))}</span>
                     </div>
                 </div>
                 <div class="text-right">

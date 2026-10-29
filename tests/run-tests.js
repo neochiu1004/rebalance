@@ -104,6 +104,13 @@ test('validateBackupData 擋壞檔、放行好檔', () => {
     assert(!run(`validateBackupData({ cash: 100, stocks: [{ symbol:'', shares: 1 }] }).ok`));
     assert(!run(`validateBackupData(null).ok`));
 });
+test('validateBackupData 擋交易欄位注入與壞值（健檢 2026-10-29）', () => {
+    assert(run(`validateBackupData({ cash: 100, stocks: [{ symbol:'2330', shares: 100, transactions: [{ id:'csv_1_2', date:'2026-01-05', price:50, shares:100, fee:19, tax:0 }] }] }).ok`), '正常交易應放行');
+    assert(!run(`validateBackupData({ cash: 100, stocks: [{ symbol:'2330', transactions: [{ id:"1');alert(1);//" }] }] }).ok`), 'id 含引號應擋下');
+    assert(!run(`validateBackupData({ cash: 100, stocks: [{ symbol:'2330', transactions: [{ id:'1', date:'<script>x</script>' }] }] }).ok`), 'date 非日期格式應擋下');
+    assert(!run(`validateBackupData({ cash: 100, stocks: [{ symbol:'2330', transactions: [{ id:'1', fee:'abc' }] }] }).ok`), 'fee 非數字應擋下');
+    assert(!run(`validateBackupData({ cash: 100, stocks: [], dividends: [{ id:'x y', amount: 100 }] }).ok`), '股利 id 含空白應擋下');
+});
 test('slimStocksForSave 歷史上限 320', () => {
     const out = run(`slimStocksForSave([{ symbol:'2330', historyData: Array.from({length: 400}, (_, i) => ({ d: '2026-01-' + String(1 + (i % 28)).padStart(2, '0'), c: i })) }])`);
     assert(out[0].historyData.length === 320);

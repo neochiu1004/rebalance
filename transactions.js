@@ -147,10 +147,10 @@ function renderTransactionList(index) {
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-black text-slate-800">${typeLabel} ${fmt(t.shares)} 股</span>
-                        <span class="text-[10px] font-bold text-slate-400">${t.date}</span>
+                        <span class="text-[10px] font-bold text-slate-400">${escapeHtml(t.date || '')}</span>
                     </div>
                     <div class="text-[11px] font-medium text-slate-500 mt-0.5">
-                        單價 @${fmtPrice(t.price)} | 手續費 ${t.fee}${!isBuy ? ` | 稅 ${t.tax}` : ''}
+                        單價 @${fmtPrice(t.price)} | 手續費 ${escapeHtml(String(t.fee ?? ''))}${!isBuy ? ` | 稅 ${escapeHtml(String(t.tax ?? ''))}` : ''}
                     </div>
                 </div>
             </div>
