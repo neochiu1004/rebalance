@@ -214,11 +214,18 @@ function calculateDailyPortfolioHistoryUncached() {
 
     let previousTotal = null;
     let cumulativePnl = 0;
+    let annualYear = null;
+    let annualPnl = 0;
     rows.forEach(row => {
         row.dailyPnl = previousTotal === null ? 0 : (row.totalValue - previousTotal) - (Number(row.externalFlow) || 0);
         row.dailyReturn = previousTotal > 0 ? (row.dailyPnl / previousTotal) * 100 : 0;
         cumulativePnl += row.dailyPnl;
         row.cumulativePnl = cumulativePnl;
+        // 年度損益：同一曆年內的每日盈虧累計（跨年歸零重算），與每日／累計同為市值口徑
+        const rowYear = String(row.date || '').slice(0, 4);
+        if (rowYear !== annualYear) { annualYear = rowYear; annualPnl = 0; }
+        annualPnl += row.dailyPnl;
+        row.annualPnl = annualPnl;
         previousTotal = row.totalValue;
     });
     // 校準累計盈虧，使最後一筆與上方「目前總盈虧」一致。
@@ -298,8 +305,10 @@ function renderDailyPnlChart(rows) {
     const latest = displayRows[displayRows.length - 1];
     const pnlClass = latest.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
     const cumulativeClass = latest.cumulativePnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+    const annualClass = (latest.annualPnl || 0) >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
     summary.innerHTML = `
         <div><div class="text-[10px] font-bold text-slate-400">最新每日盈虧</div><div class="text-lg font-black ${pnlClass}">${latest.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.dailyPnl))}</div></div>
+        <div><div class="text-[10px] font-bold text-slate-400">${String(latest.date || '').slice(0, 4)} 年度損益</div><div class="text-lg font-black ${annualClass}">${(latest.annualPnl || 0) >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.annualPnl || 0))}</div></div>
         <div class="text-right"><div class="text-[10px] font-bold text-slate-400">累計盈虧</div><div class="text-lg font-black ${cumulativeClass}">${latest.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(latest.cumulativePnl))}</div></div>`;
 
     const scrubber = document.getElementById('daily-pnl-scrubber');
@@ -308,8 +317,10 @@ function renderDailyPnlChart(rows) {
         const item = displayRows[idx] || latest;
         const pnlCls = item.dailyPnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
         const cumCls = item.cumulativePnl >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
+        const annCls = (item.annualPnl || 0) >= 0 ? 'text-[#22C55E]' : 'text-[#EF4444]';
         summary.innerHTML = `
             <div><div class="text-[10px] font-bold text-slate-400">${item.date} 盈虧</div><div class="text-lg font-black ${pnlCls}">${item.dailyPnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(item.dailyPnl))}</div></div>
+            <div><div class="text-[10px] font-bold text-slate-400">${String(item.date || '').slice(0, 4)} 年度損益</div><div class="text-lg font-black ${annCls}">${(item.annualPnl || 0) >= 0 ? '+' : '-'}NT$${fmt(Math.abs(item.annualPnl || 0))}</div></div>
             <div class="text-right"><div class="text-[10px] font-bold text-slate-400">累計盈虧</div><div class="text-lg font-black ${cumCls}">${item.cumulativePnl >= 0 ? '+' : '-'}NT$${fmt(Math.abs(item.cumulativePnl))}</div></div>`;
         if (scrubberDate) scrubberDate.textContent = item.date.slice(5);
     };
@@ -331,6 +342,17 @@ function renderDailyPnlChart(rows) {
                     pointBackgroundColor: '#0F172A',
                     tension: 0.25,
                     fill: true
+                },
+                {
+                    label: '年度損益',
+                    data: displayRows.map(row => row.annualPnl || 0),
+                    borderColor: '#F59E0B',
+                    borderWidth: 1.8,
+                    borderDash: [5, 4],
+                    pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
+                    pointBackgroundColor: '#F59E0B',
+                    tension: 0.25,
+                    yAxisID: 'cumulative'
                 },
                 {
                     label: '累計盈虧',

@@ -144,6 +144,15 @@ test('sliceDailyRows 依區間切片', () => {
     run(`dailyPnlRangeDays = 60;`);
 });
 
+test('annualPnl 年度損益跨年歸零重算', () => {
+    run(`state.cash = 0; state.cashFlows = []; state.stocks = [{ symbol:'2330', name:'台積電', shares:1000, price:92, costPrice:90, paidCost:90000, realizedPnl:0, historyData:[{d:'2025-12-30',c:90},{d:'2025-12-31',c:95},{d:'2026-01-02',c:92}], transactions:[] }];`);
+    const rows = run(`calculateDailyPortfolioHistory()`);
+    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
+    approx(byDate['2025-12-31'].annualPnl, 5000, 1, '2025 年度累計');
+    approx(byDate['2026-01-02'].dailyPnl, -3000, 1, '2026 首日每日盈虧');
+    approx(byDate['2026-01-02'].annualPnl, -3000, 1, '跨年後年度損益應歸零重算，不是 2000');
+});
+
 // ---------- reports ----------
 test('computePerformanceMetrics 合成序列', () => {
     const m = run(`computePerformanceMetrics([{totalValue:100, dailyReturn:0},{totalValue:110, dailyReturn:10},{totalValue:99, dailyReturn:-10}])`);
@@ -162,12 +171,6 @@ test('computeRealizedByYear 與逐筆明細一致', () => {
 });
 
 // ---------- advanced ----------
-test('parseDividendEvents 對應 FinMind 實測欄位', () => {
-    const rows = [{ stock_id: '2330', CashExDividendTradingDate: '2026-03-17', CashDividendPaymentDate: '2026-04-09', CashEarningsDistribution: 6.000035, StockEarningsDistribution: 0 }];
-    const ev = run(`parseDividendEvents(${JSON.stringify(rows)}, { symbol:'2330', name:'台積電', shares:1000 })`);
-    assert(ev.length === 1 && ev[0].exDate === '2026-03-17' && ev[0].payDate === '2026-04-09');
-    approx(ev[0].estCash, 6000, 1, 'estCash');
-});
 test('computeScenario Beta 推估', () => {
     run(`state.cash = 100000; state.stocks = [{ symbol:'2330', name:'台積電', shares:1000, price:100, costPrice:90, beta:1, transactions:[] }];`);
     const s = run(`computeScenario(-10)`);

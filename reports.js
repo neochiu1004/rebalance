@@ -1,6 +1,6 @@
 // ==========================================
 // MCE 模組化 - reports.js (績效／股利／年報／提醒／雲端同步／AI／外觀)
-// 功能: F5 績效指標、F6 股利中心、F7 年度報表、F8 偏離提醒、
+// 功能: F5 績效指標、F7 年度報表、F8 偏離提醒、
 //       F9 Gist 雲端同步、F10 AI 解讀、F11 深色模式
 // ==========================================
 
@@ -99,7 +99,7 @@ function renderRebalanceAlerts() {
     </div>`;
 }
 
-// ---------- F5+F6+F7: 資產頁報表卡 ----------
+// ---------- F5+F7: 資產頁報表卡 ----------
 function renderReportCards() {
     const el = document.getElementById('feature-cards');
     if (!el) return;
@@ -118,32 +118,6 @@ function renderReportCards() {
         <div class="text-[10px] font-semibold text-slate-400 mt-2">Sharpe（無風險利率以 0 計）：${perf.sharpe.toFixed(2)}</div>
     </div>` : '';
 
-    // 股利中心
-    const dividends = Array.isArray(state.dividends) ? state.dividends : [];
-    const thisYear = localDateStr().slice(0, 4);
-    const divThisYear = dividends.filter(d => String(d.date || '').startsWith(thisYear)).reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    const divTotal = dividends.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-    const yieldOnCost = metrics && metrics.totalPaidCostSum > 0 ? (divTotal / metrics.totalPaidCostSum) * 100 : 0;
-    const monthly = Array.from({ length: 12 }, (_, m) => dividends.filter(d => String(d.date || '').startsWith(`${thisYear}-${String(m + 1).padStart(2, '0')}`)).reduce((s, d) => s + (Number(d.amount) || 0), 0));
-    const maxMonthly = Math.max(1, ...monthly);
-    const monthlyHtml = monthly.map((v, m) => `<div class="flex-1 flex flex-col items-center gap-1"><div class="text-[8px] font-black ${v > 0 ? 'text-amber-600' : 'text-slate-300'}">${v > 0 ? fmt(v) : ''}</div><div class="w-full bg-amber-400/80 rounded-t" style="height:${Math.max(2, (v / maxMonthly) * 44)}px"></div><div class="text-[8px] font-bold text-slate-400">${m + 1}月</div></div>`).join('');
-    const perStock = {};
-    dividends.forEach(d => { perStock[d.symbol || ''] = (perStock[d.symbol || ''] || 0) + (Number(d.amount) || 0); });
-    const topDiv = Object.entries(perStock).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const divHtml = `<div class="glass-card p-4 mb-6">
-        <h2 class="text-xl font-black text-slate-900 mb-3">股利中心</h2>
-        <div class="grid grid-cols-3 gap-2 text-center mb-3">
-            <div><div class="text-[10px] font-bold text-slate-400">${thisYear} 年股利</div><div class="text-base font-black text-amber-600">NT$${fmt(divThisYear)}</div></div>
-            <div><div class="text-[10px] font-bold text-slate-400">累計股利</div><div class="text-base font-black text-slate-900">NT$${fmt(divTotal)}</div></div>
-            <div><div class="text-[10px] font-bold text-slate-400">對成本殖利率</div><div class="text-base font-black text-slate-900">${yieldOnCost.toFixed(2)}%</div></div>
-        </div>
-        <div class="flex items-end gap-1 h-[76px]">${monthlyHtml}</div>
-        ${topDiv.length ? `<div class="mt-3 pt-2 border-t border-slate-100">${topDiv.map(([sym, amt]) => {
-            const st = (state.stocks || []).find(s => s.symbol === sym);
-            return `<div class="flex justify-between text-xs py-1"><span class="font-black text-slate-800">${escapeHtml(st?.name || sym)} <span class="text-slate-400 font-bold">${escapeHtml(sym)}</span></span><span class="font-black text-amber-600">NT$${fmt(amt)}</span></div>`;
-        }).join('')}</div>` : '<div class="text-[11px] font-semibold text-slate-400 mt-2">尚無股利紀錄，到個股明細用「股利」模式登錄第一筆。</div>'}
-    </div>`;
-
     // 年度報表
     const realizedByYear = computeRealizedByYear(state.stocks || []);
     const divByYear = aggregateDividendsByYear(dividends);
@@ -157,7 +131,7 @@ function renderReportCards() {
         }).join('')}
     </div>` : '';
 
-    el.innerHTML = perfHtml + divHtml + reportHtml;
+    el.innerHTML = perfHtml + reportHtml;
 }
 
 function exportAnnualCsv() {

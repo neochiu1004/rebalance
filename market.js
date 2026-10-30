@@ -140,7 +140,9 @@ async function renderMarketBar() {
     const cellHtml = cells.map(c => {
         const cls = c.changePercent > 0 ? 'text-rose-600' : c.changePercent < 0 ? 'text-emerald-600' : 'text-slate-500';
         const arrow = c.changePercent > 0 ? '▲' : c.changePercent < 0 ? '▼' : '—';
-        return `<div class="flex-1 min-w-[86px]"><div class="text-[10px] font-bold text-slate-400">${c.label}</div><div class="text-sm font-black text-slate-900">${fmtPrice(c.price)}</div><div class="text-[10px] font-black ${cls}">${arrow} ${Math.abs(c.changePercent).toFixed(2)}%</div></div>`;
+        const sign = c.change > 0 ? '+' : c.change < 0 ? '-' : '';
+        const points = Math.abs(c.change).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return `<div class="flex-1 min-w-[86px]"><div class="text-[10px] font-bold text-slate-400">${c.label}</div><div class="text-sm font-black text-slate-900">${fmtPrice(c.price)}</div><div class="text-[10px] font-black ${cls}">${arrow} ${sign}${points}（${sign}${Math.abs(c.changePercent).toFixed(2)}%）</div></div>`;
     }).join('');
     const riskHtml = risk ? `<div class="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-100"><span class="w-2.5 h-2.5 rounded-full ${risk.color} animate-pulse"></span><div><div class="text-[10px] font-bold text-slate-400">大盤風險（0050）</div><div class="text-xs font-black ${risk.text}">${risk.label}・距高 ${risk.drawdown.toFixed(1)}%</div></div></div>` : '';
     el.innerHTML = `<div class="glass-card p-3.5 mb-5 flex flex-wrap items-center gap-3">${cellHtml}${riskHtml}</div>`;
