@@ -186,6 +186,8 @@ function applyTransaction({
         date: date || localDateStr(),
         note,
         isImported,
+        // 匯入歷史成交時通常不重建目前現金；刪除時依此欄位決定是否回滾現金。
+        cashSynced: syncCash,
         realizedPnl
     };
     stock.transactions.unshift(transaction);
@@ -288,7 +290,10 @@ function deleteTransactionWithRollback(stock, transId) {
     const cost = Number.isFinite(Number(targetTrans.netAmount))
         ? { ...calculatedCost, netAmount: Number(targetTrans.netAmount) }
         : calculatedCost;
-    if (typeof state !== 'undefined') {
+    const isImportedTransaction = targetTrans.cashSynced === false
+        || targetTrans.isImported === true
+        || String(targetTrans.id || '').startsWith('csv_');
+    if (typeof state !== 'undefined' && !isImportedTransaction) {
         if (type === 'buy') state.cash = (Number(state.cash) || 0) + cost.netAmount;
         else state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
     }

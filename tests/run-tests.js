@@ -77,6 +77,18 @@ test('賣出不改均價、買入才移動均價', () => {
     run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:70, shares:60, date:'2026-01-03' })`);
     assert(run(`state.stocks[0].costPrice`) > before, '買入後均價應上升');
 });
+test('匯入交易含現成費用稅額，刪除不錯動現金', () => {
+    run(`state.cash = 100000; state.stocks = [{ symbol:'00631L', name:'元大台灣50正2', shares:0, transactions:[] }];`);
+    run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:26.79, shares:250, feeOverride:2, date:'2026/11/06', syncCash:false, id:'import-buy' })`);
+    run(`state.stocks[0].transactions[0].netAmount = 6699; state.stocks[0].transactions[0].tax = 0; recalculateStockFromTransactions(state.stocks[0]);`);
+    const cashBefore = run(`state.cash`);
+    run(`deleteTransactionWithRollback(state.stocks[0], 'import-buy')`);
+    assert(run(`state.cash`) === cashBefore, '刪除匯入交易不應回滾現金');
+    run(`state.stocks[0].transactions = [{ id:'csv_legacy_1', type:'buy', price:10, shares:10, fee:1, tax:0, netAmount:101, date:'2026-01-01' }]; recalculateStockFromTransactions(state.stocks[0]);`);
+    const legacyCash = run(`state.cash`);
+    run(`deleteTransactionWithRollback(state.stocks[0], 'csv_legacy_1')`);
+    assert(run(`state.cash`) === legacyCash, '舊版 CSV 交易也不應回滾現金');
+});
 test('deleteTransactionWithRollback 回滾現金與已實現', () => {
     run(`state.cash = 1000000; state.stocks = [{ symbol:'2330', name:'台積電', shares:0, transactions:[] }];`);
     run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:50, shares:1000, date:'2026-01-05' })`);
