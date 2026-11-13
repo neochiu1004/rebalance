@@ -141,6 +141,16 @@
         nav { background: #FFFFFF !important; border-top: 1px solid #EAECF0 !important; }
         nav button { color: #667085 !important; }
         nav button.tab-active { color: #101828 !important; background: #FFFFFF !important; border: 1px solid #D0D5DD; box-shadow: 0 4px 12px rgba(16,24,40,.10) !important; }
+        .more-menu { position: fixed; right: 0.75rem; bottom: 5.75rem; width: min(15rem, calc(100vw - 1.5rem)); padding: 0.5rem; background: #fff; border: 1px solid #EAECF0; border-radius: 14px; box-shadow: 0 14px 35px rgba(16,24,40,.14); z-index: 60; }
+        .more-menu button { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: .75rem .8rem; border-radius: 10px; color: #344054; font-weight: 650; text-align: left; }
+        .more-menu button:hover { background: #F2F4F7; transform: none; }
+        .primary-action { background: #101828; color: #fff; border-radius: 10px; padding: .7rem 1rem; font-weight: 700; }
+        .primary-action:hover { background: #1D2939; transform: translateY(-1px); }
+        .back-action { color: #667085; font-weight: 650; font-size: .875rem; }
+        .back-action:hover { color: #101828; transform: none; }
+        nav #tab-target, nav #tab-waterlevel, nav #tab-watch { display: none; }
+        #market-bar:empty { display: none; }
+        nav button.tab-active svg, nav button.tab-active span { color: #101828 !important; }
     </style>
 </head>
 <body class="text-slate-900 antialiased pb-20">
@@ -506,17 +516,19 @@
         <section id="view-assets" class="view-section transition-opacity duration-300">
             <div data-refresh-header class="refresh-header flex justify-between items-start mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
                 <div>
-                    <h1 class="text-lg font-bold text-slate-800 mb-1">總資產價值 (TWD)</h1>
+                    <h1 class="text-lg font-bold text-slate-800 mb-1">資產總覽</h1>
                     <div class="flex items-center gap-2 text-slate-500">
                         <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                        <span class="text-xs font-medium" id="last-update">自動更新中</span>
+                        <span class="text-xs font-medium" id="last-update">即時資料</span>
                     </div>
                 </div>
+                <button class="primary-action" onclick="switchTab('trade')">記錄交易</button>
             </div>
 
             <div id="market-bar"></div>
             <div class="mb-8">
                 <div class="text-5xl font-black text-slate-900 tracking-tight" id="total-asset-value">0</div>
+                <div class="text-sm font-semibold text-slate-500 mt-2">目前總值</div>
                 <div id="total-pnl-summary" class="hidden glass-card mt-4 p-4 flex flex-col gap-1">
                     <div class="text-xs font-bold text-slate-500">目前總盈虧</div>
                     <div class="text-3xl font-black text-green-500 tracking-tight" id="total-pnl-amount">NT$ 0</div>
@@ -631,7 +643,11 @@
         </section>
 
         <section id="view-trade" class="view-section hidden transition-opacity duration-300">
-            <h1 data-refresh-header class="refresh-header text-2xl font-black mb-6 text-center text-slate-900 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 sm:-mx-6">獨立交易下單</h1>
+            <div class="flex items-center justify-between mb-6 sticky top-0 z-30 bg-[#F8FAFC]/95 backdrop-blur-md py-3 -mx-4 px-4 sm:-mx-6 sm:px-6">
+                <button class="back-action" onclick="switchTab('assets')">← 返回總覽</button>
+                <h1 data-refresh-header class="refresh-header text-2xl font-black text-slate-900">記錄交易</h1>
+                <span class="w-16"></span>
+            </div>
             
             <div id="trade-tab-content" class="space-y-6 mb-8"></div>
 
@@ -851,6 +867,13 @@
 
     </main>
 
+    <div id="more-menu" class="more-menu hidden" aria-label="更多功能">
+        <button onclick="switchTab('target')"><span>目標配置</span><span>→</span></button>
+        <button onclick="switchTab('waterlevel')"><span>市場水位</span><span>→</span></button>
+        <button onclick="switchTab('watch')"><span>追蹤</span><span>→</span></button>
+        <button onclick="switchTab('settings')"><span>設定與備份</span><span>→</span></button>
+    </div>
+
     <nav class="fixed bottom-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200/60 flex justify-around items-center pb-safe pt-1.5 px-2 z-50 shadow-sm">
         <button onclick="switchTab('assets')" id="tab-assets" class="flex flex-col items-center p-2 pt-1.5 tab-active flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
@@ -876,7 +899,11 @@
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
             <span class="text-[10px]">追蹤</span>
         </button>
-    </nav></nav>
+        <button onclick="toggleMoreMenu()" id="tab-more" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
+            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h.01M12 12h.01M19 12h.01"></path></svg>
+            <span class="text-[10px]">更多</span>
+        </button>
+    </nav>
 
     <script src="state.js"></script>
     <script src="core.js"></script>
@@ -934,7 +961,14 @@
             }, 2500);
         }
 
+        function toggleMoreMenu() {
+            const menu = document.getElementById('more-menu');
+            if (menu) menu.classList.toggle('hidden');
+        }
+
         function switchTab(tabId) {
+            const moreMenu = document.getElementById('more-menu');
+            if (moreMenu) moreMenu.classList.add('hidden');
             document.querySelectorAll('.view-section').forEach(el => {
                 el.classList.add('hidden');
                 el.classList.remove('opacity-100');
@@ -958,6 +992,12 @@
             if (targetBtn) {
                 targetBtn.classList.add('tab-active');
                 targetBtn.classList.remove('tab-inactive');
+            } else if (['target', 'waterlevel', 'watch', 'settings'].includes(tabId)) {
+                const moreBtn = document.getElementById('tab-more');
+                if (moreBtn) {
+                    moreBtn.classList.add('tab-active');
+                    moreBtn.classList.remove('tab-inactive');
+                }
             }
 
             if (tabId === 'rebalance' && typeof renderRebalanceResult === 'function') {

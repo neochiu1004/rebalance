@@ -541,7 +541,7 @@ function updateAllData() {
     const stockListEl = document.getElementById('stock-cards-container') || document.getElementById('stock-list');
     if (stockListEl) {
         stockListEl.innerHTML = state.stocks.length === 0 ? 
-            '<div class="glass-card p-8 text-center text-slate-400 font-semibold border-dashed">尚無股票資料<br><span class="text-xs font-normal mt-1 block">請至設定頁手動新增或匯入CSV</span></div>' : 
+            '<div class="glass-card p-8 text-center text-slate-400 font-semibold border-dashed">尚無持股</div>' :
             state.stocks.map((s, index) => {
             
             const currentPrice = s.price || s.costPrice || 0;
