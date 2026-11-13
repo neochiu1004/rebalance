@@ -68,7 +68,19 @@ test('applyTransaction 已實現損益 +9,778', () => {
     approx(r.transaction.realizedPnl, 9778, 1, 'realized');
     assert(run(`state.stocks[0].shares`) === 0);
 });
+test('賣出不改均價、買入才移動均價', () => {
+    run(`state.cash = 1000000; state.stocks = [{ symbol:'2330', name:'台積電', shares:0, transactions:[] }];`);
+    run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:50, shares:100, date:'2026-01-01' })`);
+    const before = run(`state.stocks[0].costPrice`);
+    run(`applyTransaction({ stock: state.stocks[0], type:'sell', price:60, shares:40, date:'2026-01-02' })`);
+    approx(run(`state.stocks[0].costPrice`), before, 0.0001, '賣出後均價');
+    run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:70, shares:60, date:'2026-01-03' })`);
+    assert(run(`state.stocks[0].costPrice`) > before, '買入後均價應上升');
+});
 test('deleteTransactionWithRollback 回滾現金與已實現', () => {
+    run(`state.cash = 1000000; state.stocks = [{ symbol:'2330', name:'台積電', shares:0, transactions:[] }];`);
+    run(`applyTransaction({ stock: state.stocks[0], type:'buy', price:50, shares:1000, date:'2026-01-05' })`);
+    run(`applyTransaction({ stock: state.stocks[0], type:'sell', price:60, shares:1000, date:'2026-02-02' })`);
     const cashBefore = run(`state.cash`);
     const txId = run(`state.stocks[0].transactions[0].id`);
     const deleted = run(`deleteTransactionWithRollback(state.stocks[0], '${txId}')`);
@@ -135,6 +147,11 @@ test('calculateDailyPortfolioHistory 快取同簽名回傳同一份', () => {
     run(`state.stocks[0].price = 101;`);
     const c = run(`calculateDailyPortfolioHistory()`);
     assert(c !== a, '狀態變動後應重算');
+});
+test('券商 CSV 解析逗號與內建代號', () => {
+    const row = run(`parseBrokerCsvLine('元大台灣50正2,2026/11/06,250,"-6,699",26.79,"6,697",2,0,0,k0ANR,台幣,')`);
+    assert(row.length === 12 && row[3] === '-6,699', 'CSV quoted amount');
+    assert(run(`resolveImportedSymbol('元大台灣50正2')`) === '00631L', '內建代號');
 });
 test('sliceDailyRows 依區間切片', () => {
     run(`dailyPnlRangeDays = 2;`);

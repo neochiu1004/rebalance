@@ -28,10 +28,9 @@ function renderTradeTab() {
 
     container.innerHTML = `
         <div class="max-w-xl mx-auto space-y-6">
-            <!-- 標題與說明 -->
+            <!-- 單一主動作：記錄一筆交易 -->
             <div>
                 <h2 class="text-2xl font-bold text-slate-800">買賣紀錄</h2>
-                <p class="text-xs text-slate-500 mt-1">手續費 0.1425%×28折（低消 1 元）、賣出證交稅 ETF 0.1% / 一般 0.3%，成本採移動加權平均</p>
             </div>
 
             <!-- 主表單卡片 -->
@@ -49,7 +48,6 @@ function renderTradeTab() {
                         <select id="trade-stock-select" onchange="onTradeStockChange()" class="w-full border-slate-200 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">
                             ${stockOptions}
                         </select>
-                        <p class="text-xs text-slate-400 mt-1">買進時可選「新增股票（首筆買進）」建立持股。</p>
                     </div>
 
                     <div id="new-stock-fields" class="grid grid-cols-2 gap-3 bg-lime-50 border border-lime-100 rounded-xl p-3">
@@ -130,8 +128,7 @@ function renderTradeTab() {
             <!-- CSV 匯入區塊 -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex justify-between items-center">
                 <div>
-                    <h3 class="text-sm font-bold text-slate-800">CSV 批次匯入</h3>
-                    <p class="text-xs text-slate-500 mt-1">匯入券商交易紀錄以自動補齊</p>
+                    <h3 class="text-sm font-bold text-slate-800">匯入券商對帳單</h3>
                 </div>
                 <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors">
                     選擇檔案
@@ -139,13 +136,6 @@ function renderTradeTab() {
                 </label>
             </div>
 
-            <!-- 歷史紀錄列表 -->
-            <div>
-                <h3 class="text-lg font-bold text-slate-800 mb-3">歷史紀錄 <span id="global-history-count" class="text-sm text-slate-500 font-normal">(0)</span></h3>
-                <div id="global-trade-history" class="space-y-3">
-                    <!-- JS 渲染 -->
-                </div>
-            </div>
         </div>
     `;
     

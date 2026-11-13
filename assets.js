@@ -333,36 +333,15 @@ function renderDailyPnlChart(rows) {
             labels: displayRows.map(row => row.date.slice(5)),
             datasets: [
                 {
-                    label: '每日盈虧',
-                    data: displayRows.map(row => row.dailyPnl),
-                    borderColor: '#0F172A',
-                    backgroundColor: 'rgba(15, 23, 42, 0.08)',
-                    borderWidth: 1.8,
-                    pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
-                    pointBackgroundColor: '#0F172A',
-                    tension: 0.25,
-                    fill: true
-                },
-                {
-                    label: '年度損益',
-                    data: displayRows.map(row => row.annualPnl || 0),
-                    borderColor: '#F59E0B',
-                    borderWidth: 1.8,
-                    borderDash: [5, 4],
-                    pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
-                    pointBackgroundColor: '#F59E0B',
-                    tension: 0.25,
-                    yAxisID: 'cumulative'
-                },
-                {
-                    label: '累計盈虧',
-                    data: displayRows.map(row => row.cumulativePnl),
-                    borderColor: '#2563EB',
+                    label: '每日總資產',
+                    data: displayRows.map(row => row.totalValue),
+                    borderColor: '#101828',
+                    backgroundColor: 'rgba(184, 243, 74, 0.22)',
                     borderWidth: 2,
                     pointRadius: (ctx) => ctx.dataIndex === selectedDailyPnlIndex ? 4 : 0,
-                    pointBackgroundColor: '#2563EB',
+                    pointBackgroundColor: '#101828',
                     tension: 0.25,
-                    yAxisID: 'cumulative'
+                    fill: true
                 }
             ]
         },
@@ -379,8 +358,7 @@ function renderDailyPnlChart(rows) {
             },
             scales: {
                 x: { offset: true, ticks: { maxTicksLimit: 6, font: { size: 9 } }, grid: { display: false } },
-                y: { ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } },
-                cumulative: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } }
+                y: { ticks: { callback: value => `NT$${fmt(value)}`, font: { size: 9 } } }
             }
         }
     });
@@ -636,7 +614,7 @@ function updateAllData() {
                         ${dailyChangeHTML}
                     </div>
                     <div class="bg-blue-50 border border-blue-200 p-2.5 rounded-xl flex flex-col justify-center items-center text-center">
-                        <span class="text-xs font-bold text-blue-800 mb-0.5">含交易成本均價</span>
+                        <span class="text-xs font-bold text-blue-800 mb-0.5">均價</span>
                         <span class="text-base sm:text-xl font-black text-blue-900 tracking-tight">@${fmtPrice(displayAverageCost)}</span>
                     </div>
                 </div>
@@ -1324,6 +1302,31 @@ async function manualRefreshFromChart() {
     }
 }
 
+function parseBrokerCsvLine(line) {
+    const cells = []; let cell = ''; let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"' && line[i + 1] === '"' && quoted) { cell += '"'; i++; continue; }
+        if (ch === '"') { quoted = !quoted; continue; }
+        if (ch === ',' && !quoted) { cells.push(cell.trim()); cell = ''; continue; }
+        cell += ch;
+    }
+    cells.push(cell.trim());
+    return cells;
+}
+
+function resolveImportedSymbol(name) {
+    const exact = (state.stocks || []).find(s => s.name === name && s.symbol);
+    return (exact && exact.symbol) || symbolMap[name] || '';
+}
+
+function addImportedWatchStock(symbol, name) {
+    if (!symbol || !Array.isArray(state.watchStocks)) return;
+    if (!state.watchStocks.some(s => String(s.symbol).toUpperCase() === String(symbol).toUpperCase())) {
+        state.watchStocks.push({ symbol, name, price: 0, change: 0, changePercent: 0, volume: 0, addedAt: localDateStr(), isWatch: true, historyData: [] });
+    }
+}
+
 function handleCSVUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -1336,115 +1339,50 @@ function handleCSVUpload(e) {
     }
     
     reader.onload = async (event) => {
-        const text = event.target.result.replace(/^\uFEFF/, '');
-        const lines = text.trim().split('\n');
-        let processCount = 0;
+        const lines = event.target.result.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+        let processCount = 0, skippedCount = 0;
         
         if (lines.length < 2) {
             resetUpload();
             return;
         }
 
-        const headers = lines[0].trim().split(',').map(h => h.replace(/^"|"$/g, '').trim());
-        const idxName = headers.indexOf('股票名稱');
-        const idxShares = headers.indexOf('股數');
-        const idxAvgPrice = headers.indexOf('成交均價');
-        const idxPrice = headers.indexOf('市價');
-        const idxPaidCost = headers.indexOf('付出成本');
+        const headers = parseBrokerCsvLine(lines.shift() || '');
+        const at = name => headers.indexOf(name);
+        const idxName = at('股名') !== -1 ? at('股名') : at('股票名稱');
+        const idxDate = at('日期'), idxShares = at('成交股數'), idxNet = at('淨收付');
+        const idxPrice = at('成交單價'), idxFee = at('手續費'), idxTax = at('交易稅');
+        if ([idxName, idxShares, idxPrice].some(i => i < 0)) { showToast('找不到券商交易明細欄位'); resetUpload(); return; }
 
-        const nameIdx = idxName !== -1 ? idxName : 0;
-        const sharesIdx = idxShares !== -1 ? idxShares : 1;
-        const avgPriceIdx = idxAvgPrice !== -1 ? idxAvgPrice : 4;
-        const priceIdx = idxPrice !== -1 ? idxPrice : 5;
-        const paidCostIdx = idxPaidCost !== -1 ? idxPaidCost : 7;
-
-        const requiredLength = Math.max(nameIdx, sharesIdx, avgPriceIdx);
-        const csvImportDate = localDateStr();
-
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line || line.includes('總預估') || line.includes('總融資')) continue;
-            
-            const row = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-            if (!row || row.length <= requiredLength) continue;
-            
-            const clean = row.map(v => v.replace(/^"|"$/g, '').replace(/,/g, ''));
-            const name = clean[nameIdx];
-            const shares = parseFloat(clean[sharesIdx]);
-            const costPrice = parseFloat(clean[avgPriceIdx]);
-            const currentPrice = parseFloat(clean[priceIdx]) || costPrice;
-            let paidCost = parseFloat(clean[paidCostIdx]);
-            
-            if (isNaN(paidCost)) {
-                const buyValue = Math.round(shares * costPrice);
-                const buyFee = calculateBrokerageFee(buyValue);
-                paidCost = buyValue + buyFee;
-            }
-
-            const symbol = symbolMap[name] || '';
-            const beta = name.includes('正2') ? 2 : 1; 
-            
-            if (name && !isNaN(shares) && shares > 0 && !isNaN(costPrice) && costPrice > 0) {
-                const importCost = calculateTradingCost({
-                    type: 'buy',
-                    price: costPrice,
-                    shares,
-                    stock: { symbol, name }
-                });
-
-                const csvTransaction = {
-                    id: "csv_" + Date.now().toString() + "_" + i,
-                    date: csvImportDate,
-                    type: 'buy',
-                    price: costPrice,
-                    shares: shares,
-                    fee: importCost.fee,
-                    tax: 0,
-                    netAmount: paidCost
-                };
-
-                let existing = state.stocks.find(s => s.name === name);
-                if (existing) {
-                    const oldShares = existing.shares;
-                    const totalShares = oldShares + shares;
-                    let oldPaidCost = existing.paidCost;
-                    if (oldPaidCost === undefined) {
-                        const oldBuyVal = Math.round(oldShares * (existing.costPrice || existing.price));
-                        oldPaidCost = oldBuyVal + calculateBrokerageFee(oldBuyVal);
-                    }
-                    existing.paidCost = oldPaidCost + paidCost;
-                    
-                    if (totalShares > 0) {
-                        const oldCostPrice = existing.costPrice || existing.price || 0;
-                        existing.costPrice = ((oldShares * oldCostPrice) + (shares * costPrice)) / totalShares;
-                    }
-                    existing.shares = totalShares;
-                    if (!existing.transactions) existing.transactions = [];
-                    existing.transactions.push(csvTransaction);
-                } else {
-                    let isEtf = isETF(symbol, name);
-                    const newStock = { 
-                        name, 
-                        shares, 
-                        price: currentPrice, 
-                        costPrice, 
-                        paidCost, 
-                        symbol, 
-                        beta,
-                        targetWeight: isEtf ? 1 : 0,
-                        isLocked: !isEtf,
-                        transactions: [csvTransaction]
-                    };
-                    state.stocks.push(newStock);
-                }
+        for (let i = 0; i < lines.length; i++) {
+            const row = parseBrokerCsvLine(lines[i]);
+            const cleanNum = index => parseFloat(String(row[index] || '').replace(/,/g, ''));
+            const name = String(row[idxName] || '').trim(), shares = Math.round(cleanNum(idxShares));
+            const price = Math.abs(cleanNum(idxPrice)), net = cleanNum(idxNet), fee = cleanNum(idxFee), tax = cleanNum(idxTax) || 0;
+            if (!name || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) { skippedCount++; continue; }
+            const type = tax > 0 ? 'sell' : (net < 0 ? 'buy' : null);
+            if (!type) { skippedCount++; continue; }
+            const symbol = resolveImportedSymbol(name);
+            let stock = state.stocks.find(s => (symbol && s.symbol === symbol) || s.name === name);
+            if (!stock) stock = { symbol, name, shares: 0, price, costPrice: 0, paidCost: 0, beta: name.includes('正2') ? 2 : 1, targetWeight: isETF(symbol, name) ? 1 : 0, isLocked: !isETF(symbol, name), transactions: [] }, state.stocks.push(stock);
+            const id = `csv_${file.name}_${i + 2}`;
+            if (stock.transactions.some(t => t.id === id)) continue;
+            try {
+                const result = applyTransaction({ stock, type, price, shares, feeOverride: Number.isFinite(fee) ? fee : null, date: row[idxDate] || localDateStr(), note: `匯入 ${file.name}`, syncCash: false, isImported: true, id });
+                result.transaction.tax = tax;
+                if (Number.isFinite(net) && net !== 0) result.transaction.netAmount = Math.abs(net);
+                recalculateStockFromTransactions(stock);
+                addImportedWatchStock(symbol, name);
                 processCount++;
-            }
+            } catch (_) { skippedCount++; }
         }
         
         if (typeof balanceWeights === 'function') balanceWeights(); 
         saveState();
         if (typeof renderTargetStockWeights === 'function') renderTargetStockWeights();
-        if (typeof showToast === 'function') showToast(`成功處理匯入 ${processCount} 檔股票並補登交易簿`);
+        if (typeof renderWatchStocks === 'function') renderWatchStocks();
+        if (typeof renderTradeTab === 'function') renderTradeTab();
+        if (typeof showToast === 'function') showToast(`已匯入 ${processCount} 筆交易${skippedCount ? `，略過 ${skippedCount} 筆` : ''}`);
         try {
             await fetchLatestPrices();
         } catch (e) {}

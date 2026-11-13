@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0F172A">
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23B8F34A'/></svg>">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="再平衡">
@@ -127,6 +128,19 @@
         html.dark .bg-slate-50, html.dark .bg-slate-100 { background-color: #16213A !important; }
         html.dark .border-slate-100, html.dark .border-slate-200, html.dark .border-slate-50 { border-color: #334155 !important; }
         html.dark input, html.dark select, html.dark textarea { background-color: #0F172A !important; color: #E2E8F0 !important; border-color: #334155 !important; }
+        /* Quiet surface: one clear action per view, with Linear / Notes-like density. */
+        body { background: #F7F8FA !important; }
+        .glass-card { border-radius: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+        .glass-card:hover { box-shadow: 0 4px 14px rgba(16,24,40,.08); }
+        .view-section > h1, #view-rebalance > div:first-child, #view-waterlevel > div:first-child, #view-assets > div:first-child {
+            background: #FFFFFF !important; color: #101828 !important; border: 1px solid #EAECF0 !important;
+            box-shadow: none !important; border-radius: 14px !important;
+        }
+        #view-assets > div:first-child h1, #view-rebalance > div:first-child h1, #view-waterlevel > div:first-child h1 { color: #101828 !important; }
+        #view-assets > div:first-child #last-update, #view-rebalance > div:first-child p, #view-waterlevel > div:first-child span { color: #667085 !important; }
+        nav { background: #FFFFFF !important; border-top: 1px solid #EAECF0 !important; }
+        nav button { color: #667085 !important; }
+        nav button.tab-active { color: #101828 !important; background: #FFFFFF !important; border: 1px solid #D0D5DD; box-shadow: 0 4px 12px rgba(16,24,40,.10) !important; }
     </style>
 </head>
 <body class="text-slate-900 antialiased pb-20">

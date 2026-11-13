@@ -113,18 +113,13 @@ function calculateAllInCost(stock = {}, currentPrice = null) {
     const buyCost = Number.isFinite(Number(stock.paidCost))
         ? Number(stock.paidCost)
         : fallbackBuyCost;
-    const sellPrice = Number(currentPrice) || Number(stock.price) || buyPrice;
-    const sellCost = sellPrice > 0
-        ? calculateTradingCost({ type: 'sell', price: sellPrice, shares, stock })
-        : { fee: 0, tax: 0 };
-    const totalCost = buyCost + sellCost.fee + sellCost.tax;
-
     return {
         buyCost,
-        sellFee: sellCost.fee,
-        sellTax: sellCost.tax,
-        totalCost,
-        averageCost: totalCost / shares
+        // 未實現盈虧只用買入成本基礎計算；賣出費用只在已實現交易發生時認列。
+        sellFee: 0,
+        sellTax: 0,
+        totalCost: buyCost,
+        averageCost: buyCost / shares
     };
 }
 
@@ -235,13 +230,16 @@ function recalculateStockFromTransactions(stock) {
         const type = (t.type === 'buy' || t.type === '買進') ? 'buy' : 'sell';
         const shares = Math.max(0, parseInt(t.shares, 10) || 0);
         const price = Math.max(0, parseFloat(t.price) || 0);
-        const cost = calculateTradingCost({
+        const calculatedCost = calculateTradingCost({
             type,
             price,
             shares,
             stock,
             feeOverride: Number.isFinite(Number(t.fee)) ? Number(t.fee) : null
         });
+        const cost = Number.isFinite(Number(t.netAmount))
+            ? { ...calculatedCost, netAmount: Number(t.netAmount), tax: Number.isFinite(Number(t.tax)) ? Number(t.tax) : calculatedCost.tax }
+            : calculatedCost;
 
         if (type === 'buy') {
             currentShares += shares;
@@ -280,13 +278,16 @@ function deleteTransactionWithRollback(stock, transId) {
     if (targetIndex === -1) return null;
     const targetTrans = stock.transactions[targetIndex];
     const type = (targetTrans.type === 'buy' || targetTrans.type === '買進') ? 'buy' : 'sell';
-    const cost = calculateTradingCost({
+    const calculatedCost = calculateTradingCost({
         type,
         price: Math.max(0, parseFloat(targetTrans.price) || 0),
         shares: Math.max(0, parseInt(targetTrans.shares, 10) || 0),
         stock,
         feeOverride: Number.isFinite(Number(targetTrans.fee)) ? Number(targetTrans.fee) : null
     });
+    const cost = Number.isFinite(Number(targetTrans.netAmount))
+        ? { ...calculatedCost, netAmount: Number(targetTrans.netAmount) }
+        : calculatedCost;
     if (typeof state !== 'undefined') {
         if (type === 'buy') state.cash = (Number(state.cash) || 0) + cost.netAmount;
         else state.cash = Math.max(0, (Number(state.cash) || 0) - cost.netAmount);
