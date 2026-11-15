@@ -145,9 +145,6 @@
         .primary-action:hover { background: #1D2939; transform: translateY(-1px); }
         .back-action { color: #667085; font-weight: 650; font-size: .875rem; }
         .back-action:hover { color: #101828; transform: none; }
-        nav button { padding-left: .1rem !important; padding-right: .1rem !important; }
-        nav button svg { width: 1.2rem; height: 1.2rem; }
-        #tab-waterlevel::before { height: 1.2rem; line-height: 1.2rem; font-size: 1.3rem; }
         #market-bar:empty { display: none; }
         nav button.tab-active svg, nav button.tab-active span { color: #101828 !important; }
     </style>
@@ -889,25 +886,13 @@
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
             <span class="text-[10px]">資產總覽</span>
         </button>
-        <button onclick="switchTab('trade')" id="tab-trade" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-            <span class="text-[10px]">交易</span>
-        </button>
         <button onclick="switchTab('rebalance')" id="tab-rebalance" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
             <span class="text-[10px]">再平衡</span>
         </button>
-        <button onclick="switchTab('target')" id="tab-target" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>
-            <span class="text-[10px]">目標配置</span>
-        </button>
         <button onclick="switchTab('waterlevel')" id="tab-waterlevel" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             <span class="text-[10px]">市場水位</span>
-        </button>
-        <button onclick="switchTab('watch')" id="tab-watch" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
-            <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-            <span class="text-[10px]">追蹤</span>
         </button>
         <button onclick="switchTab('settings')" id="tab-settings" class="flex flex-col items-center p-2 pt-1.5 tab-inactive flex-1 transition-colors relative group">
             <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
@@ -1001,7 +986,14 @@
                 el.classList.add('tab-inactive');
             });
 
-            const targetBtn = document.getElementById(`tab-${tabId}`);
+            // 同頁功能共用一個底部標籤：交易→資產總覽、目標配置→再平衡、追蹤→市場水位
+            const NAV_TAB_FOR = {
+                assets: 'tab-assets', trade: 'tab-assets',
+                rebalance: 'tab-rebalance', target: 'tab-rebalance',
+                waterlevel: 'tab-waterlevel', watch: 'tab-waterlevel',
+                settings: 'tab-settings'
+            };
+            const targetBtn = document.getElementById(NAV_TAB_FOR[tabId] || `tab-${tabId}`);
             if (targetBtn) {
                 targetBtn.classList.add('tab-active');
                 targetBtn.classList.remove('tab-inactive');

@@ -256,9 +256,12 @@ test('updateAllData 呼叫鏈不 throw（三層 wrapper）', () => {
 
 // ---------- 頁面重組（index.html 結構） ----------
 const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-test('底部標籤七個齊全且不再使用更多選單', () => {
-    for (const id of ['tab-assets', 'tab-trade', 'tab-rebalance', 'tab-target', 'tab-waterlevel', 'tab-watch', 'tab-settings']) {
+test('底部標籤只留四個（同頁功能共用）且不再使用更多選單', () => {
+    for (const id of ['tab-assets', 'tab-rebalance', 'tab-waterlevel', 'tab-settings']) {
         assert(indexHtml.includes(`id="${id}"`), `缺少 ${id}`);
+    }
+    for (const id of ['tab-trade', 'tab-target', 'tab-watch']) {
+        assert(!indexHtml.includes(`id="${id}"`), `同頁功能不應再有底部標籤 ${id}`);
     }
     assert(!indexHtml.includes('more-menu'), '不應再有 more-menu');
     assert(!indexHtml.includes('tab-more'), '不應再有 tab-more');
@@ -277,6 +280,9 @@ test('switchTab 合併頁面對照正確', () => {
     assert(indexHtml.includes("['view-assets-head', 'view-trade']"), '交易應含共用頁首');
     assert(indexHtml.includes("['view-market-head', 'view-waterlevel']"), '市場水位應含共用頁首');
     assert(indexHtml.includes("['view-market-head', 'view-watch']"), '追蹤應含共用頁首');
+    assert(indexHtml.includes("trade: 'tab-assets'"), '交易模式應亮資產總覽標籤');
+    assert(indexHtml.includes("target: 'tab-rebalance'"), '目標配置應亮再平衡標籤');
+    assert(indexHtml.includes("watch: 'tab-waterlevel'"), '追蹤模式應亮市場水位標籤');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
