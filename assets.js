@@ -1476,6 +1476,89 @@ function handleCSVUpload(e) {
     reader.readAsText(file);
 }
 
+// ---------- 庫存 CSV 建立底倉（與券商交易明細匯入是不同格式、不同按鍵） ----------
+// 格式：股票名稱,股數,總損益,交易別,成交均價,市價,現值,付出成本,預估損益,報酬率,幣別
+// 檔案尾端的總計列（總預估損益／總預估現值／總融資金額…）不是持股，解析時略過。
+function parseBasePositionCsv(text) {
+    const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return { rows: [], skipped: 0 };
+    const headers = parseBrokerCsvLine(lines.shift() || '');
+    const at = name => headers.indexOf(name);
+    const idxName = at('股票名稱') !== -1 ? at('股票名稱') : at('股名');
+    const idxShares = at('股數'), idxAvg = at('成交均價'), idxMarket = at('市價'), idxCost = at('付出成本');
+    if ([idxName, idxShares, idxAvg, idxCost].some(i => i < 0)) throw new Error('找不到庫存檔案欄位');
+    const rows = []; let skipped = 0;
+    lines.forEach(line => {
+        const row = parseBrokerCsvLine(line);
+        const num = idx => parseFloat(String(row[idx] || '').replace(/,/g, ''));
+        const name = String(row[idxName] || '').trim();
+        const shares = Math.round(num(idxShares)), avgPrice = num(idxAvg), paidCost = num(idxCost);
+        const marketPrice = idxMarket >= 0 ? num(idxMarket) : NaN;
+        if (!name || name.startsWith('總') || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(avgPrice) || avgPrice <= 0 || !Number.isFinite(paidCost) || paidCost <= 0) { skipped++; return; }
+        rows.push({ name, shares, avgPrice, paidCost, marketPrice: Number.isFinite(marketPrice) && marketPrice > 0 ? marketPrice : avgPrice });
+    });
+    return { rows, skipped };
+}
+
+// 把解析出的庫存列建成底倉：每檔一筆「底倉匯入」買進（不扣現金），成本以檔案的付出成本為準。
+// 已建立過底倉、或該檔已有其他來源持股時略過，避免重複匯入或覆蓋既有帳本。
+function applyBasePositions(rows) {
+    let created = 0, skipped = 0;
+    const unresolved = [];
+    (rows || []).forEach(r => {
+        const symbol = resolveImportedSymbol(r.name);
+        if (!symbol) unresolved.push(r.name);
+        let stock = state.stocks.find(s => (symbol && s.symbol === symbol) || s.name === r.name);
+        const baseId = `base_${symbol || r.name}`;
+        if (stock && Array.isArray(stock.transactions) && stock.transactions.some(t => t.id === baseId)) { skipped++; return; }
+        if (stock && (Number(stock.shares) || 0) > 0) { skipped++; return; }
+        if (!stock) {
+            stock = { symbol, name: r.name, shares: 0, price: r.marketPrice, costPrice: 0, paidCost: 0, beta: r.name.includes('正2') ? 2 : 1, targetWeight: isETF(symbol, r.name) ? 1 : 0, isLocked: !isETF(symbol, r.name), transactions: [] };
+            state.stocks.push(stock);
+        }
+        try {
+            const impliedFee = Math.max(0, Math.round(r.paidCost - r.avgPrice * r.shares));
+            const result = applyTransaction({ stock, type: 'buy', price: r.avgPrice, shares: r.shares, feeOverride: impliedFee, date: localDateStr(), note: '底倉匯入', syncCash: false, isImported: true, id: baseId });
+            result.transaction.netAmount = r.paidCost;
+            result.transaction.isBasePosition = true;
+            recalculateStockFromTransactions(stock);
+            if (r.marketPrice > 0) stock.price = r.marketPrice;
+            created++;
+        } catch (_) { skipped++; }
+    });
+    return { created, skipped, unresolved };
+}
+
+function handleBasePositionUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const parsed = parseBasePositionCsv(event.target.result);
+            if (!parsed.rows.length) {
+                if (typeof showToast === 'function') showToast('檔案裡沒有可建立底倉的持股');
+                return;
+            }
+            const { created, skipped, unresolved } = applyBasePositions(parsed.rows);
+            if (typeof balanceWeights === 'function') balanceWeights();
+            saveState();
+            if (typeof renderTargetStockWeights === 'function') renderTargetStockWeights();
+            if (typeof renderTradeTab === 'function') renderTradeTab();
+            let msg = `已建立 ${created} 檔底倉${skipped ? `，略過 ${skipped} 檔` : ''}`;
+            if (unresolved.length) msg += `；${unresolved.join('、')} 未能對應代號，先以名稱建立`;
+            if (typeof showToast === 'function') showToast(msg);
+            try { await fetchLatestPrices(); } catch (_) {}
+            updateAllData();
+        } catch (err) {
+            if (typeof showToast === 'function') showToast(err.message || '底倉匯入失敗');
+        } finally {
+            e.target.value = '';
+        }
+    };
+    reader.readAsText(file);
+}
+
 function calculateEstimatedSellCost(stock, currentPrice) {
   const shares = Number(stock?.shares) || 0;
   const price = Number(currentPrice) || Number(stock?.price) || Number(stock?.costPrice) || 0;

@@ -158,6 +158,18 @@ function renderTradeTab() {
                 </label>
             </div>
 
+            <!-- 底倉匯入區塊（庫存格式，不同於交易明細） -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex justify-between items-center">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">匯入庫存建立底倉</h3>
+                    <p class="text-xs text-slate-400 mt-1">券商庫存 CSV（股票名稱、股數、成交均價、市價、付出成本），建立現有持股，不扣現金；已有持股或已建立過底倉的會自動略過</p>
+                </div>
+                <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-4 rounded-lg transition-colors shrink-0 ml-4">
+                    選擇檔案
+                    <input type="file" accept=".csv" class="hidden" onchange="handleBasePositionUpload(event)">
+                </label>
+            </div>
+
         </div>
     `;
     

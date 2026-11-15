@@ -254,6 +254,43 @@ test('updateAllData 呼叫鏈不 throw（三層 wrapper）', () => {
     assert(run(`window.__marketWrapped && window.__reportsWrapped && window.__advancedWrapped`));
 });
 
+// ---------- 庫存 CSV 建立底倉 ----------
+test('parseBasePositionCsv 解析庫存檔案並略過總計列', () => {
+    const csv = '股票名稱,股數,總損益,交易別,成交均價,市價,現值,付出成本,預估損益,報酬率,幣別\n元大台灣50正2,"1,550","-3,937",現股,34.41,31.92,"49,414","53,351","-3,937",-7.38%,台幣\n群益臺灣加權正2,"3,100","-3,079",現股,11.38,10.4,"32,197","35,276","-3,079",-8.73%,台幣\n總預估損益,"-7,016",總報酬率,-7.92%\n總預估現值,"81,611",總成本,"88,627"\n總融資金額,0,總利息,0';
+    const parsed = run('parseBasePositionCsv(' + JSON.stringify(csv) + ')');
+    assert(parsed.rows.length === 2, '應解析出 2 檔持股');
+    assert(parsed.rows[0].shares === 1550 && parsed.rows[0].paidCost === 53351, '股數與付出成本');
+    approx(parsed.rows[0].avgPrice, 34.41, 0.001, '成交均價');
+    approx(parsed.rows[1].marketPrice, 10.4, 0.001, '市價');
+    assert(parsed.skipped === 3, '總計列應略過 3 列');
+});
+test('applyBasePositions 建立底倉、成本以付出成本為準、重複匯入略過', () => {
+    run(`state.cash = 777; state.stocks = []; state.watchStocks = [];`);
+    const rowsJson = JSON.stringify([{ name: '元大台灣50正2', shares: 1550, avgPrice: 34.41, paidCost: 53351, marketPrice: 31.92 }]);
+    const r1 = run('applyBasePositions(' + rowsJson + ')');
+    assert(r1.created === 1, '應建立 1 檔');
+    const st = run(`state.stocks[0]`);
+    assert(st.symbol === '00631L' && st.shares === 1550 && st.paidCost === 53351, JSON.stringify(st));
+    approx(st.price, 31.92, 0.001, '現價應為市價');
+    approx(st.costPrice, 53351 / 1550, 0.01, '均價應由付出成本推得');
+    assert(run(`state.cash`) === 777, '建立底倉不扣現金');
+    const r2 = run('applyBasePositions(' + rowsJson + ')');
+    assert(r2.created === 0 && r2.skipped === 1, '重複匯入應略過');
+    assert(run(`state.stocks[0].shares`) === 1550, '重複匯入不重複加股');
+});
+test('applyBasePositions 已有其他來源持股時不覆蓋', () => {
+    run(`state.stocks = [{ symbol:'2330', name:'台積電', shares:100, price:1000, costPrice:900, paidCost:90000, transactions:[{id:'t1',type:'buy',price:900,shares:100,fee:128,tax:0,netAmount:90128,date:'2026-01-01'}] }]; state.watchStocks = [];`);
+    const r = run('applyBasePositions(' + JSON.stringify([{ name: '台積電', shares: 500, avgPrice: 900, paidCost: 450000, marketPrice: 1000 }]) + ')');
+    assert(r.created === 0 && r.skipped === 1, '已有持股應略過');
+    assert(run(`state.stocks[0].shares`) === 100, '股數不變');
+});
+test('交易頁有獨立的底倉匯入按鍵', () => {
+    const tradeJs = fs.readFileSync(path.join(root, 'trade.js'), 'utf8');
+    assert(tradeJs.includes('匯入庫存建立底倉'), '缺少底倉匯入區塊');
+    assert(tradeJs.includes('handleBasePositionUpload(event)'), '底倉按鍵應呼叫 handleBasePositionUpload');
+    assert(tradeJs.includes('handleCSVUpload(event)'), '原券商對帳單匯入應保留');
+});
+
 // ---------- 頁面重組（index.html 結構） ----------
 const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 test('底部標籤只留四個（同頁功能共用）且不再使用更多選單', () => {

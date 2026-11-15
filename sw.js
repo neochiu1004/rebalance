@@ -1,5 +1,5 @@
 // Service Worker：App Shell 快取（同源 GET 才處理，API 請求不快取）
-const CACHE_NAME = 'rebalance-shell-v7';
+const CACHE_NAME = 'rebalance-shell-v8';
 const SHELL_FILES = [
     './',
     './index.html',
