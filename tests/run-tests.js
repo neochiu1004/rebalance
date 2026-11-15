@@ -37,7 +37,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-const files = ['state.js', 'core.js', 'api.js', 'assets.js', 'transactions.js', 'trade.js', 'waterlevel.js', 'rebalance.js', 'watch.js', 'market.js', 'reports.js', 'advanced.js'];
+const files = ['state.js', 'core.js', 'api.js', 'stock-list.js', 'assets.js', 'transactions.js', 'trade.js', 'waterlevel.js', 'rebalance.js', 'watch.js', 'market.js', 'reports.js', 'advanced.js'];
 for (const f of files) {
     vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
@@ -289,6 +289,52 @@ test('交易頁有獨立的底倉匯入按鍵', () => {
     assert(tradeJs.includes('匯入庫存建立底倉'), '缺少底倉匯入區塊');
     assert(tradeJs.includes('handleBasePositionUpload(event)'), '底倉按鍵應呼叫 handleBasePositionUpload');
     assert(tradeJs.includes('handleCSVUpload(event)'), '原券商對帳單匯入應保留');
+});
+
+// ---------- 全台股清單與搜尋 ----------
+test('buildStockList 去重取最新日期、只留上市上櫃、含 ETF', () => {
+    const rows = [
+        { stock_id: '2330', stock_name: '台積電', type: 'twse', industry_category: '半導體業', date: '2024-01-01' },
+        { stock_id: '2330', stock_name: '台積電', type: 'twse', industry_category: '半導體業', date: '2025-06-01' },
+        { stock_id: '0050', stock_name: '元大台灣50', type: 'twse', industry_category: 'ETF', date: '2025-06-01' },
+        { stock_id: '00631L', stock_name: '元大台灣50正2', type: 'twse', industry_category: 'ETF', date: '2025-06-01' },
+        { stock_id: '6488', stock_name: '環球晶', type: 'tpex', industry_category: '半導體業', date: '2025-06-01' },
+        { stock_id: '9999', stock_name: '興櫃測試', type: 'emerging', industry_category: '', date: '2025-06-01' }
+    ];
+    const list = run('buildStockList(' + JSON.stringify(rows) + ')');
+    assert(list.length === 4, '應留 4 檔（去重且排除興櫃）: ' + list.length);
+    assert(list.find(x => x.symbol === '0050').industry === 'ETF', 'ETF 應保留');
+    assert(list.find(x => x.symbol === '6488').market === 'tpex', '上櫃應保留');
+});
+test('searchStockList 代號優先、名稱關鍵字、臺台正規化', () => {
+    const list = [
+        { symbol: '2330', name: '台積電', market: 'twse', industry: '半導體業' },
+        { symbol: '00631L', name: '元大台灣50正2', market: 'twse', industry: 'ETF' },
+        { symbol: '00685L', name: '群益臺灣加權正2', market: 'twse', industry: 'ETF' },
+        { symbol: '2303', name: '聯電', market: 'twse', industry: '半導體業' }
+    ];
+    const bySymbol = run('searchStockList(' + JSON.stringify(list) + ', "23")');
+    assert(bySymbol.length === 2 && bySymbol[0].symbol === '2303', '代號開頭應優先且排序');
+    const byName = run('searchStockList(' + JSON.stringify(list) + ', "台灣50")');
+    assert(byName.length === 1 && byName[0].symbol === '00631L', '名稱關鍵字（台）應對到臺灣');
+    const byExact = run('searchStockList(' + JSON.stringify(list) + ', "2330")');
+    assert(byExact[0].symbol === '2330', '代號完全符合應排第一');
+    assert(run('searchStockList(' + JSON.stringify(list) + ', "不存在")').length === 0, '無符合應回空');
+});
+test('findStockSymbolByName 用快取清單以名稱對代號', () => {
+    run(`localStorage.setItem('mce_stock_list', JSON.stringify({ fetchedAt: Date.now(), list: [{ symbol: '00685L', name: '群益臺灣加權正2', market: 'twse', industry: 'ETF' }] }))`);
+    assert(run(`findStockSymbolByName('群益臺灣加權正2')`) === '00685L', '完全比對');
+    assert(run(`findStockSymbolByName('群益台灣加權正2')`) === '00685L', '臺台正規化比對');
+    assert(run(`findStockSymbolByName('沒這檔')`) === '', '對不到回空字串');
+    run(`localStorage.removeItem('mce_stock_list')`);
+});
+test('追蹤頁有股票搜尋 UI 且載入 stock-list.js', () => {
+    const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    assert(indexHtml.includes('id="stock-search-input"'), '缺少搜尋框');
+    assert(indexHtml.includes('id="stock-search-results"'), '缺少搜尋結果區');
+    assert(indexHtml.includes('src="stock-list.js"'), '缺少 stock-list.js script');
+    const swJs = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+    assert(swJs.includes("'./stock-list.js'"), 'sw 快取清單應含 stock-list.js');
 });
 
 // ---------- 頁面重組（index.html 結構） ----------

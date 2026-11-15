@@ -806,6 +806,15 @@
                     </button>
                 </div>
             </div>
+            <!-- 全台股清單關鍵字搜尋 -->
+            <div class="glass-card p-4 mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">🔍</span>
+                    <input id="stock-search-input" type="text" placeholder="查詢股票：輸入代號或名稱（例：2330、台積電、台灣50）" onfocus="initStockSearch()" oninput="onStockSearchInput(event)" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none">
+                </div>
+                <p id="stock-search-hint" class="text-[11px] text-slate-400 font-semibold mt-2">輸入關鍵字，從全台股清單（上市＋上櫃，含 ETF）查詢，點結果直接加入追蹤</p>
+                <div id="stock-search-results" class="divide-y divide-slate-100"></div>
+            </div>
             <div id="watch-stock-list" class="space-y-3 mb-8"></div>
         </section>
 
@@ -903,6 +912,7 @@
     <script src="state.js"></script>
     <script src="core.js"></script>
     <script src="api.js"></script>
+    <script src="stock-list.js"></script>
     <script src="assets.js"></script>
     <script src="transactions.js"></script>
     <script src="trade.js"></script>

@@ -1396,7 +1396,11 @@ function parseBrokerCsvLine(line) {
 
 function resolveImportedSymbol(name) {
     const exact = (state.stocks || []).find(s => s.name === name && s.symbol);
-    return (exact && exact.symbol) || symbolMap[name] || '';
+    if (exact && exact.symbol) return exact.symbol;
+    if (symbolMap[name]) return symbolMap[name];
+    // 最後用全台股清單（本機快取）以名稱比對代號，臺／台視為同字
+    if (typeof findStockSymbolByName === 'function') return findStockSymbolByName(name) || '';
+    return '';
 }
 
 function addImportedWatchStock(symbol, name) {
@@ -1418,6 +1422,7 @@ function handleCSVUpload(e) {
     }
     
     reader.onload = async (event) => {
+        try { if (typeof ensureStockList === 'function') await ensureStockList(); } catch (_) {}
         const lines = event.target.result.replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
         let processCount = 0, skippedCount = 0;
         
@@ -1535,6 +1540,7 @@ function handleBasePositionUpload(e) {
     const reader = new FileReader();
     reader.onload = async (event) => {
         try {
+            try { if (typeof ensureStockList === 'function') await ensureStockList(); } catch (_) {}
             const parsed = parseBasePositionCsv(event.target.result);
             if (!parsed.rows.length) {
                 if (typeof showToast === 'function') showToast('檔案裡沒有可建立底倉的持股');

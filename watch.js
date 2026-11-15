@@ -3,14 +3,18 @@ async function addWatchStock() {
     if (!symbolInput) return;
     const symbol = symbolInput.trim().toUpperCase();
     if (!symbol) return;
+    const nameInput = prompt('股票名稱（可略，留空將自動帶入）：', '') || '';
+    await addWatchStockWithSymbol(symbol, nameInput);
+}
 
+// 以代號（＋已知名稱）加入追蹤：prompt 流程與清單搜尋點選共用
+async function addWatchStockWithSymbol(symbol, nameInput = '') {
     if (!state.watchStocks) state.watchStocks = [];
     if (state.watchStocks.some(s => (s.symbol || '').toUpperCase() === symbol)) {
         if (typeof showToast === 'function') showToast('該股票已在追蹤清單中');
         return;
     }
 
-    const nameInput = prompt('股票名稱（可略，留空將自動帶入）：', '') || '';
     const today = localDateStr();
 
     // 先查名稱與現價再存檔：優先用持股／其他來源快取，再用 Fugle 分開查 ticker／quote。
@@ -286,4 +290,64 @@ async function manualRefreshWatchStocks() {
     } finally {
         if (btn) btn.classList.remove('animate-spin', 'pointer-events-none');
     }
+}
+
+// ---------- 追蹤頁：全台股清單關鍵字搜尋 ----------
+function updateStockSearchHint(list) {
+    const hint = document.getElementById('stock-search-hint');
+    if (!hint) return;
+    if (!list || !list.length) {
+        hint.textContent = state.finmindToken ? '股票清單載入失敗，請稍後再試' : '請先至設定頁輸入 FinMind Token，才能載入股票清單查詢';
+    } else {
+        hint.textContent = `共 ${list.length} 檔（上市＋上櫃，含 ETF），點結果直接加入追蹤`;
+    }
+}
+
+async function initStockSearch() {
+    if (typeof ensureStockList !== 'function') return;
+    const list = await ensureStockList();
+    updateStockSearchHint(list);
+    const input = document.getElementById('stock-search-input');
+    if (input && input.value.trim()) renderStockSearchResults(input.value);
+}
+
+function onStockSearchInput(e) {
+    renderStockSearchResults(e.target.value);
+}
+
+let stockSearchSeq = 0;
+async function renderStockSearchResults(keyword) {
+    const box = document.getElementById('stock-search-results');
+    if (!box) return;
+    const kw = String(keyword || '').trim();
+    if (!kw) { box.innerHTML = ''; return; }
+    const seq = ++stockSearchSeq;
+    let list = typeof getStockListSync === 'function' ? getStockListSync() : [];
+    if (!list.length && typeof ensureStockList === 'function') {
+        box.innerHTML = '<div class="p-3 text-xs text-slate-400 font-semibold">股票清單載入中…</div>';
+        list = await ensureStockList();
+        if (seq !== stockSearchSeq) return;
+        updateStockSearchHint(list);
+    }
+    const results = typeof searchStockList === 'function' ? searchStockList(list, kw, 20) : [];
+    if (!results.length) {
+        box.innerHTML = `<div class="p-3 text-xs text-slate-400 font-semibold">找不到符合「${escapeHtml(kw)}」的股票</div>`;
+        return;
+    }
+    box.innerHTML = results.map(item => {
+        const marketLabel = item.market === 'twse' ? '上市' : '上櫃';
+        const meta = [marketLabel, item.industry].filter(Boolean).join('・');
+        return `<button type="button" onclick="addWatchStockFromSearch(this.dataset.symbol, this.dataset.name)" data-symbol="${escapeHtml(item.symbol)}" data-name="${escapeHtml(item.name)}" class="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-slate-50 text-left transition-colors">
+            <span class="font-bold text-slate-800 text-sm">${escapeHtml(item.name)} <span class="text-xs font-semibold text-slate-400 font-mono">${escapeHtml(item.symbol)}</span></span>
+            <span class="text-[11px] font-semibold text-slate-400 shrink-0">${escapeHtml(meta)}</span>
+        </button>`;
+    }).join('');
+}
+
+function addWatchStockFromSearch(symbol, name) {
+    const input = document.getElementById('stock-search-input');
+    const box = document.getElementById('stock-search-results');
+    if (input) input.value = '';
+    if (box) box.innerHTML = '';
+    addWatchStockWithSymbol(String(symbol || '').toUpperCase(), name || '');
 }
