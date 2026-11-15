@@ -1,4 +1,4 @@
-function addWatchStock() {
+async function addWatchStock() {
     const symbolInput = prompt('請輸入欲追蹤的台股代號（例：2330 或 0050）：');
     if (!symbolInput) return;
     const symbol = symbolInput.trim().toUpperCase();
@@ -10,16 +10,25 @@ function addWatchStock() {
         return;
     }
 
-    const name = prompt('股票名稱（可略，留空將自動帶入）：', '') || symbol;
+    const nameInput = prompt('股票名稱（可略，留空將自動帶入）：', '') || '';
     const today = localDateStr();
+
+    // 先查名稱與現價再存檔：優先用持股／其他來源快取，再用 Fugle 分開查 ticker／quote。
+    // 這樣只輸入代號存檔後，清單直接顯示正確名稱與股價，不會停在代號／0。
+    let info = null;
+    if (typeof fetchStockInfoBySymbol === 'function') {
+        try { info = await fetchStockInfoBySymbol(symbol); } catch (_) { info = null; }
+    }
+    const resolvedName = nameInput.trim() || (info && info.name) || symbol;
+    const resolvedPrice = (info && Number(info.price) > 0) ? Number(info.price) : 0;
 
     const newWatch = {
         symbol,
-        name: name.trim() || symbol,
-        price: 0,
+        name: resolvedName,
+        price: resolvedPrice,
         change: 0,
-        changePercent: 0,
-        volume: 0,
+        changePercent: (info && Number(info.changePercent)) || 0,
+        volume: (info && Number(info.volume)) || 0,
         addedAt: today,
         isWatch: true,
         highPrice: null,
@@ -30,8 +39,26 @@ function addWatchStock() {
     state.watchStocks.push(newWatch);
     saveState();
     renderWatchStocks();
-    if (typeof showToast === 'function') showToast(`已將 ${newWatch.name} 加入追蹤`);
-    if (typeof fetchWatchStockPrices === 'function') fetchWatchStockPrices();
+
+    // 若共用查詢沒抓到，再用既有的追蹤報價更新補一次（await 到完成才算結束）
+    if ((!resolvedPrice || resolvedName === symbol) && typeof fetchWatchStockPrices === 'function') {
+        try { await fetchWatchStockPrices(); } catch (_) {}
+        const refreshed = state.watchStocks.find(s => (s.symbol || '').toUpperCase() === symbol);
+        if (refreshed) {
+            newWatch.name = refreshed.name;
+            newWatch.price = refreshed.price;
+        }
+    }
+
+    if (typeof showToast === 'function') {
+        if (newWatch.price > 0 || (newWatch.name && newWatch.name !== symbol)) {
+            showToast(`已將 ${newWatch.name} 加入追蹤`);
+        } else if (info && info.hasApiKey === false) {
+            showToast(`已加入追蹤 ${symbol}，但尚無名稱／股價：請先至設定頁輸入 Fugle API Key 後再按更新`);
+        } else {
+            showToast(`已加入追蹤 ${symbol}，名稱／股價暫時抓不到，請稍後按更新重試`);
+        }
+    }
 }
 
 function removeWatchStock(index) {

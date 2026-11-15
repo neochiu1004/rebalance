@@ -5,10 +5,25 @@
 
 let tradeConfig = {
     type: 'buy', // 'buy' 或 'sell'
-    stockIndex: -2, // -2 = 新增股票（首筆買進），-1 = 尚未選擇
+    stockIndex: -2, // -2 = 新增股票（首筆買進），-3 = 自追蹤清單帶入（仍屬新增持股），-1 = 尚未選擇
+    watchIndex: -1, // stockIndex === -3 時，對應 state.watchStocks 的索引
     syncCash: true,
     manualFee: false
 };
+
+// 追蹤清單中尚未持有的股票（買入清單要列出這些，代號與持股重複的不重複列）
+// 回傳 [{ watchIndex, symbol, name, price }]
+function listWatchOnlyStocks() {
+    if (typeof state === 'undefined' || !Array.isArray(state.watchStocks)) return [];
+    const held = new Set((Array.isArray(state.stocks) ? state.stocks : []).map(s => String(s.symbol || '').toUpperCase()));
+    const out = [];
+    state.watchStocks.forEach((s, idx) => {
+        const sym = String(s.symbol || '').toUpperCase();
+        if (!sym || held.has(sym)) return;
+        out.push({ watchIndex: idx, symbol: s.symbol, name: (s.name && s.name !== s.symbol) ? s.name : s.symbol, price: Number(s.price) || 0 });
+    });
+    return out;
+}
 
 // 渲染整個交易 Tab 頁面
 function renderTradeTab() {
@@ -16,12 +31,19 @@ function renderTradeTab() {
     if (!container) return;
 
     let stockOptions = `<option value="-2">＋新增股票（首筆買進）</option>`;
+    const heldSymbols = new Set();
     if (state && state.stocks) {
         state.stocks.forEach((s, idx) => {
+            heldSymbols.add(String(s.symbol || '').toUpperCase());
             const name = s.name || s.symbol;
-            stockOptions += `<option value="${idx}">${escapeHtml(name)} (庫存: ${s.shares || 0})</option>`;
+            stockOptions += `<option value="${idx}">${escapeHtml(name)} ${escapeHtml(s.symbol || '')} (庫存: ${s.shares || 0})</option>`;
         });
     }
+    // 追蹤清單已有、但尚未持有的股票，也要能直接選來買入（去重：已持有的不重複列）
+    listWatchOnlyStocks().forEach((w) => {
+        const priceText = w.price > 0 ? ` @${w.price}` : '';
+        stockOptions += `<option value="watch:${w.watchIndex}">${escapeHtml(w.name)} ${escapeHtml(w.symbol || '')} (追蹤${priceText})</option>`;
+    });
 
     const today = localDateStr();
     const isBuy = tradeConfig.type === 'buy';
@@ -139,10 +161,14 @@ function renderTradeTab() {
         </div>
     `;
     
-    if (tradeConfig.stockIndex !== -1) {
-        document.getElementById('trade-stock-select').value = tradeConfig.stockIndex;
+    if (tradeConfig.stockIndex === -3 && tradeConfig.watchIndex >= 0) {
+        const sel = document.getElementById('trade-stock-select');
+        if (sel) sel.value = `watch:${tradeConfig.watchIndex}`;
+    } else if (tradeConfig.stockIndex !== -1) {
+        const sel = document.getElementById('trade-stock-select');
+        if (sel) sel.value = tradeConfig.stockIndex;
     }
-    onTradeStockChange();
+    onTradeStockChange(true);
     renderGlobalTradeHistory();
 }
 
@@ -151,13 +177,45 @@ function setTradeTabType(type) {
     renderTradeTab();
 }
 
-function onTradeStockChange() {
-    tradeConfig.stockIndex = parseInt(document.getElementById('trade-stock-select').value);
-    const isNew = tradeConfig.stockIndex === -2;
+function onTradeStockChange(isRestore = false) {
+    const select = document.getElementById('trade-stock-select');
+    if (!select) return;
+    const raw = String(select.value);
+    if (raw === '') { tradeConfig.stockIndex = -2; tradeConfig.watchIndex = -1; select.value = '-2'; }
+    else if (raw.startsWith('watch:')) {
+        tradeConfig.stockIndex = -3;
+        tradeConfig.watchIndex = parseInt(raw.slice(6), 10);
+    } else {
+        tradeConfig.stockIndex = parseInt(raw, 10);
+        if (tradeConfig.stockIndex !== -3) tradeConfig.watchIndex = -1;
+    }
+    const isNew = tradeConfig.stockIndex === -2 || tradeConfig.stockIndex === -3;
     const fields = document.getElementById('new-stock-fields');
-    if (fields) fields.classList.toggle('hidden', !isNew);
     const buyOnly = tradeConfig.type === 'buy';
     if (fields) fields.classList.toggle('hidden', !isNew || !buyOnly);
+    // 選到追蹤股票時，自動帶入代號／名稱，現價帶入成交價（使用者仍可改）
+    if (tradeConfig.stockIndex === -3 && !isRestore) {
+        const watch = (state.watchStocks || [])[tradeConfig.watchIndex];
+        if (watch) {
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            set('trade-new-symbol', watch.symbol || '');
+            set('trade-new-name', (watch.name && watch.name !== watch.symbol) ? watch.name : '');
+            const priceEl = document.getElementById('trade-price');
+            if (priceEl && Number(watch.price) > 0) priceEl.value = watch.price;
+        }
+    }
+    // 還原（render 後）且為追蹤來源時，欄位是重建的，也要把追蹤資料帶回來
+    if (tradeConfig.stockIndex === -3 && isRestore) {
+        const watch = (state.watchStocks || [])[tradeConfig.watchIndex];
+        const symEl = document.getElementById('trade-new-symbol');
+        if (watch && symEl && !symEl.value) {
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            set('trade-new-symbol', watch.symbol || '');
+            set('trade-new-name', (watch.name && watch.name !== watch.symbol) ? watch.name : '');
+            const priceEl = document.getElementById('trade-price');
+            if (priceEl && !priceEl.value && Number(watch.price) > 0) priceEl.value = watch.price;
+        }
+    }
     calcTradePreview();
 }
 
@@ -181,7 +239,7 @@ function toggleSyncCash() {
 function calcTradePreview(isManualFeeInput = false) {
     if (tradeConfig.stockIndex === -1) return;
     const stocksList = (typeof state !== 'undefined' && Array.isArray(state.stocks)) ? state.stocks : [];
-    const stock = tradeConfig.stockIndex === -2 ? {
+    const stock = (tradeConfig.stockIndex === -2 || tradeConfig.stockIndex === -3) ? {
         symbol: document.getElementById('trade-new-symbol')?.value || '',
         name: document.getElementById('trade-new-name')?.value || ''
     } : stocksList[tradeConfig.stockIndex];
@@ -224,25 +282,57 @@ function calcTradePreview(isManualFeeInput = false) {
 }
 
 // 提交表單
-function submitTradeForm(e) {
+async function submitTradeForm(e) {
     e.preventDefault();
     if (tradeConfig.stockIndex === -1) {
         if(typeof showToast === 'function') showToast('請先選擇股票');
         return;
     }
 
-    const isNewStock = tradeConfig.stockIndex === -2;
-    const price = parseFloat(document.getElementById('trade-price').value) || 0;
+    const isNewStock = tradeConfig.stockIndex === -2 || tradeConfig.stockIndex === -3;
+    let price = parseFloat(document.getElementById('trade-price').value) || 0;
     const shares = parseInt(document.getElementById('trade-shares').value) || 0;
     const date = document.getElementById('trade-date').value;
-    const fee = parseInt(document.getElementById('trade-fee').value) || 0;
+    let fee = parseInt(document.getElementById('trade-fee').value) || 0;
     const isBuy = tradeConfig.type === 'buy';
-
-    if (!isNewStock && (price <= 0 || shares <= 0)) return;
-    if (isNewStock && (shares < 0 || (shares > 0 && price <= 0))) return;
 
     if (isNewStock && !isBuy) {
         if(typeof showToast === 'function') showToast('賣出交易請先選擇現有持股');
+        return;
+    }
+
+    // 新增股票只輸入代號時：存檔前自動補名稱與現價
+    // 先查追蹤／持股快取，再查 Fugle；成交價沒填時用現價帶入，名稱沒填時用查到的名稱
+    let fetchedInfo = null;
+    if (isNewStock) {
+        const symbolInput = document.getElementById('trade-new-symbol');
+        const nameInput = document.getElementById('trade-new-name');
+        const symbolForLookup = symbolInput ? symbolInput.value.trim() : '';
+        const nameForLookup = nameInput ? nameInput.value.trim() : '';
+        if (symbolForLookup && (typeof fetchStockInfoBySymbol === 'function') &&
+            (!nameForLookup || nameForLookup.toUpperCase() === symbolForLookup.toUpperCase() || price <= 0)) {
+            try { fetchedInfo = await fetchStockInfoBySymbol(symbolForLookup); } catch (_) { fetchedInfo = null; }
+            if (fetchedInfo) {
+                if (nameInput && (!nameForLookup || nameForLookup.toUpperCase() === symbolForLookup.toUpperCase()) && fetchedInfo.name) {
+                    nameInput.value = fetchedInfo.name;
+                }
+                if (price <= 0 && fetchedInfo.price > 0) {
+                    price = fetchedInfo.price;
+                    const priceEl = document.getElementById('trade-price');
+                    if (priceEl) priceEl.value = price;
+                    // 用新價格重算手續費預覽，避免 fee 停在 0
+                    calcTradePreview();
+                    fee = parseInt(document.getElementById('trade-fee').value) || fee;
+                }
+            }
+        }
+    }
+
+    if (!isNewStock && (price <= 0 || shares <= 0)) return;
+    if (isNewStock && (shares < 0 || (shares > 0 && price <= 0))) {
+        if (shares > 0 && price <= 0 && typeof showToast === 'function') {
+            showToast(fetchedInfo && fetchedInfo.hasApiKey === false ? '找不到現價：請先至設定頁輸入 Fugle API Key，或手動輸入成交價' : '找不到現價，請手動輸入成交價');
+        }
         return;
     }
 
@@ -255,16 +345,25 @@ function submitTradeForm(e) {
         }
         stock = state.stocks.find(item => String(item.symbol).toUpperCase() === symbol.toUpperCase());
         if (!stock) {
+            const watchStock = (state.watchStocks || []).find(item => String(item.symbol || '').toUpperCase() === symbol.toUpperCase());
+            const resolvedName = document.getElementById('trade-new-name').value.trim()
+                || (fetchedInfo && fetchedInfo.name)
+                || (watchStock && watchStock.name && watchStock.name !== watchStock.symbol ? watchStock.name : '')
+                || symbol;
+            const marketPrice = (fetchedInfo && fetchedInfo.price > 0) ? fetchedInfo.price
+                : (watchStock && Number(watchStock.price) > 0 ? Number(watchStock.price) : price);
             stock = {
                 symbol,
-                name: document.getElementById('trade-new-name').value.trim() || symbol,
+                name: resolvedName,
                 shares: 0,
-                price,
+                price: marketPrice || price,
                 costPrice: 0,
                 paidCost: 0,
                 beta: Number.isFinite(parseFloat(document.getElementById('trade-new-beta').value)) ? parseFloat(document.getElementById('trade-new-beta').value) : 1,
                 transactions: []
             };
+        } else if ((!stock.name || stock.name === stock.symbol) && fetchedInfo && fetchedInfo.name) {
+            stock.name = fetchedInfo.name;
         }
     } else {
         stock = state.stocks[tradeConfig.stockIndex];
@@ -290,13 +389,16 @@ function submitTradeForm(e) {
 
     if (isNewStock && !state.stocks.includes(stock)) state.stocks.push(stock);
 
+    // 若現價與成交價不同，持股現價以查到的市價為準（applyTransaction 不會改 stock.price）
+    if (isNewStock && fetchedInfo && fetchedInfo.price > 0) stock.price = fetchedInfo.price;
+
     saveState();
     if(typeof updateAllData === 'function') updateAllData();
     if(typeof showToast === 'function') showToast('交易紀錄已成功新增');
-    
-    // 重置表單並重新渲染
-    document.getElementById('trade-shares').value = '';
-    document.getElementById('trade-price').value = '';
+
+    // 重置表單並重新渲染（追蹤來源已轉為持股，清單會去重，先回到新增模式避免還原失效的 watch 選項）
+    tradeConfig.stockIndex = -2;
+    tradeConfig.watchIndex = -1;
     renderTradeTab();
 }
 

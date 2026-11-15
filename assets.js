@@ -918,22 +918,43 @@ function promptRemoveStock(index) {
 function populateQuickSelect() {
     const select = document.getElementById('quick-select-stock');
     if (!select) return;
-    let html = '<option value="">-- 自現有持股帶入 --</option>';
+    let html = '<option value="">-- 自現有持股／追蹤帶入 --</option>';
+    const seen = new Set();
     if (state && state.stocks) {
         state.stocks.forEach((s, idx) => {
-            html += `<option value="${idx}">${escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.symbol || ''))}</option>`;
+            seen.add(String(s.symbol || '').toUpperCase());
+            html += `<option value="stock:${idx}">${escapeHtml(typeof formatStockName === 'function' ? formatStockName(s) : (s.symbol || ''))}</option>`;
+        });
+    }
+    if (state && Array.isArray(state.watchStocks)) {
+        state.watchStocks.forEach((s, idx) => {
+            const sym = String(s.symbol || '').toUpperCase();
+            if (!sym || seen.has(sym)) return;
+            seen.add(sym);
+            const label = (s.name && s.name !== s.symbol) ? `${s.name} ${s.symbol}` : (s.symbol || '');
+            html += `<option value="watch:${idx}">${escapeHtml(label)} (追蹤)</option>`;
         });
     }
     select.innerHTML = html;
 }
 
 function quickSelectStock(indexStr) {
-    if (indexStr === '') return;
-    const stock = state.stocks[parseInt(indexStr)];
+    if (indexStr === '' || indexStr == null) return;
+    let stock = null;
+    if (String(indexStr).startsWith('watch:')) {
+        stock = state.watchStocks && state.watchStocks[parseInt(String(indexStr).slice(6))];
+    } else if (String(indexStr).startsWith('stock:')) {
+        stock = state.stocks && state.stocks[parseInt(String(indexStr).slice(6))];
+    } else {
+        stock = state.stocks && state.stocks[parseInt(indexStr)];
+    }
     if (stock) {
-        document.getElementById('add-symbol').value = stock.symbol || '';
-        document.getElementById('add-name').value = stock.name || '';
-        document.getElementById('add-beta').value = stock.beta || '';
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        set('add-symbol', stock.symbol || '');
+        set('add-name', (stock.name && stock.name !== stock.symbol) ? stock.name : '');
+        set('add-beta', stock.beta || '');
+        const priceEl = document.getElementById('add-price');
+        if (priceEl && !priceEl.value && Number(stock.price) > 0) priceEl.value = stock.price;
     }
 }
 
@@ -986,35 +1007,30 @@ async function addStockSubmit(e) {
     let costPrice = parseFloat(priceInput) || 0;
     let currentPrice = costPrice;
 
-    if ((!name || !priceInput) && state.apiKey) {
-        try {
-            const [tickerRes, quoteRes] = await Promise.all([
-                fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${symbol}`, { headers: { 'X-API-KEY': state.apiKey } }),
-                fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${symbol}`, { headers: { 'X-API-KEY': state.apiKey } })
-            ]);
-            if (tickerRes.ok && quoteRes.ok) {
-                const ticker = await tickerRes.json();
-                const quote = await quoteRes.json();
-                if (!name) name = ticker.name || symbol;
-                if (!priceInput) {
-                    currentPrice = quote.closePrice || quote.lastPrice || 0;
-                    costPrice = currentPrice; 
-                }
-            }
-        } catch (err) {
-            console.log("Fugle API Fetch Error:", err);
+    // 只輸入代號時自動補齊：先查追蹤／持股快取，再查 Fugle（名稱與現價分開帶入）
+    if (!name || name.toUpperCase() === symbol.toUpperCase() || !priceInput) {
+        const info = await fetchStockInfoBySymbol(symbol);
+        if ((!name || name.toUpperCase() === symbol.toUpperCase()) && info.name) name = info.name;
+        if (!priceInput && info.price > 0) {
+            currentPrice = info.price;
+            costPrice = info.price;
+        } else if (priceInput && info.price > 0) {
+            // 有手填成本時，現價仍用查到的市價，不要把成本誤當現價
+            currentPrice = info.price;
         }
+        addStockSubmit._lastInfo = info;
     }
 
     costPrice = parseFloat(costPrice) || 0;
     currentPrice = parseFloat(currentPrice) || costPrice;
-    
+
     const isETFOrLevFunc = typeof isETFOrLeveraged === 'function' ? isETFOrLeveraged : () => false;
     beta = parseFloat(beta) || (isETFOrLevFunc(symbol, name) && name.includes('正2') ? 2 : 1);
     if (!name) name = symbol;
 
-    if (!costPrice && !state.apiKey) {
-        if (typeof showToast === 'function') showToast('無 API Key 或無網路連線，請手動輸入成本價');
+    if (!costPrice) {
+        const info = addStockSubmit._lastInfo;
+        if (typeof showToast === 'function') showToast(info && info.hasApiKey === false && !info.price ? '找不到此代號的價格：請先至設定頁輸入 Fugle API Key，或手動輸入成本價' : '找不到此代號的價格，請手動輸入成本價');
         resetBtn();
         return;
     }
@@ -1084,6 +1100,69 @@ async function addStockSubmit(e) {
         btn.classList.remove('opacity-70', 'pointer-events-none');
         btn.innerHTML = originalBtnHTML;
     }
+}
+
+// 從本機已有的持股／追蹤資料找同一檔股票的名稱與現價（不打網路）。
+// 新增股票只輸入代號時，先用這層帶入追蹤已有的資料，再向 Fugle 補齊。
+function getCachedStockInfoBySymbol(symbol) {
+    const target = String(symbol || '').trim().toUpperCase();
+    const info = { symbol: target, name: '', price: 0, changePercent: 0, volume: 0, source: '' };
+    if (!target || typeof state === 'undefined') return info;
+    const sources = [];
+    if (Array.isArray(state.stocks)) sources.push(...state.stocks);
+    if (Array.isArray(state.watchStocks)) sources.push(...state.watchStocks);
+    for (const s of sources) {
+        if (!s || String(s.symbol || '').trim().toUpperCase() !== target) continue;
+        if (!info.name && s.name && String(s.name).trim() && String(s.name).trim().toUpperCase() !== target) {
+            info.name = String(s.name).trim();
+        }
+        const p = Number(s.price) || Number(s.costPrice) || 0;
+        if (!info.price && p > 0) info.price = p;
+        if (!info.changePercent && Number(s.changePercent)) info.changePercent = Number(s.changePercent) || 0;
+        if (!info.volume && Number(s.volume)) info.volume = Number(s.volume) || 0;
+        if (info.name || info.price) info.source = info.source || 'cache';
+    }
+    return info;
+}
+
+// 共用查詢：只給代號，自動找出股票名稱與現價。
+// 順序：本機持股／追蹤快取 → Fugle ticker（名稱）／quote（現價），兩條分開處理，
+// 任一條成功就帶入，不再要求兩個請求都成功；沒有 API Key 時回傳快取結果並標示。
+async function fetchStockInfoBySymbol(symbol) {
+    const target = String(symbol || '').trim().toUpperCase();
+    const info = getCachedStockInfoBySymbol(target);
+    info.symbol = target;
+    if (!target) return info;
+    const apiKey = (typeof state !== 'undefined' && state.apiKey) ? state.apiKey : '';
+    if (!apiKey) {
+        info.hasApiKey = false;
+        return info;
+    }
+    info.hasApiKey = true;
+    // ticker 與 quote 各自獨立，互不拖累
+    try {
+        const tickerRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/ticker/${target}`, { headers: { 'X-API-KEY': apiKey } });
+        if (tickerRes && tickerRes.ok) {
+            const ticker = await tickerRes.json();
+            if (ticker && ticker.name) { info.name = String(ticker.name).trim(); info.source = 'fugle'; }
+        }
+    } catch (err) { console.log('Fugle ticker Fetch Error:', err); }
+    try {
+        const quoteRes = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${target}`, { headers: { 'X-API-KEY': apiKey } });
+        if (quoteRes && quoteRes.ok) {
+            const quote = await quoteRes.json();
+            const raw = quote?.closePrice ?? quote?.lastPrice ?? quote?.previousClose;
+            if (Number.isFinite(Number(raw)) && Number(raw) > 0) {
+                info.price = Number(raw);
+                info.source = 'fugle';
+            }
+            if (Number.isFinite(Number(quote?.changePercent))) info.changePercent = Number(quote.changePercent);
+            const vol = Number(quote?.total?.tradeVolume || quote?.volume || 0);
+            if (vol) info.volume = vol;
+            if (quote) info.quote = quote;
+        }
+    } catch (err) { console.log('Fugle quote Fetch Error:', err); }
+    return info;
 }
 
 // 全域跨頁面同標的報價自動同步函式

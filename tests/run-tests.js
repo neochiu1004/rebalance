@@ -182,6 +182,27 @@ test('annualPnl 年度損益跨年歸零重算', () => {
     approx(byDate['2026-01-02'].annualPnl, -3000, 1, '跨年後年度損益應歸零重算，不是 2000');
 });
 
+// ---------- 新增股票自動連結 / 追蹤帶入買入清單 ----------
+test('getCachedStockInfoBySymbol 自追蹤清單帶入名稱與現價', () => {
+    run(`state.apiKey = ''; state.stocks = []; state.watchStocks = [{ symbol:'2330', name:'台積電', price: 1000, changePercent: 1.5, volume: 123 }];`);
+    const info = run(`getCachedStockInfoBySymbol('2330')`);
+    assert(info.name === '台積電' && info.price === 1000, JSON.stringify(info));
+    const lower = run(`getCachedStockInfoBySymbol(' 2330 ')`);
+    assert(lower.name === '台積電', '代號應 trim');
+});
+test('getCachedStockInfoBySymbol 名稱等於代號時不當真名、無資料回空', () => {
+    run(`state.stocks = [{ symbol:'9999', name:'9999', price: 0 }]; state.watchStocks = [];`);
+    const info = run(`getCachedStockInfoBySymbol('9999')`);
+    assert(info.name === '' && info.price === 0, JSON.stringify(info));
+    assert(run(`getCachedStockInfoBySymbol('0000').name`) === '');
+});
+test('listWatchOnlyStocks 只列未持有的追蹤股票並去重', () => {
+    run(`state.stocks = [{ symbol:'2330', name:'台積電', shares:100, price:1000 }]; state.watchStocks = [{ symbol:'2330', name:'台積電', price:1000 }, { symbol:'0050', name:'元大台灣50', price:180 }, { symbol:'2317', name:'鴻海', price:200 }];`);
+    const list = run(`listWatchOnlyStocks()`);
+    assert(list.length === 2 && list[0].symbol === '0050' && list[0].name === '元大台灣50' && list[0].price === 180, JSON.stringify(list));
+    assert(list[1].watchIndex === 2, 'watchIndex 要對應原追蹤清單位置');
+});
+
 // ---------- reports ----------
 test('computePerformanceMetrics 合成序列', () => {
     const m = run(`computePerformanceMetrics([{totalValue:100, dailyReturn:0},{totalValue:110, dailyReturn:10},{totalValue:99, dailyReturn:-10}])`);
