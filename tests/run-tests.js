@@ -254,5 +254,30 @@ test('updateAllData 呼叫鏈不 throw（三層 wrapper）', () => {
     assert(run(`window.__marketWrapped && window.__reportsWrapped && window.__advancedWrapped`));
 });
 
+// ---------- 頁面重組（index.html 結構） ----------
+const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+test('底部標籤七個齊全且不再使用更多選單', () => {
+    for (const id of ['tab-assets', 'tab-trade', 'tab-rebalance', 'tab-target', 'tab-waterlevel', 'tab-watch', 'tab-settings']) {
+        assert(indexHtml.includes(`id="${id}"`), `缺少 ${id}`);
+    }
+    assert(!indexHtml.includes('more-menu'), '不應再有 more-menu');
+    assert(!indexHtml.includes('tab-more'), '不應再有 tab-more');
+    assert(!indexHtml.includes('toggleMoreMenu'), '不應再有 toggleMoreMenu');
+});
+test('資產/交易與市場水位/追蹤有共用切換頁首', () => {
+    assert(indexHtml.includes('id="view-assets-head"'), '缺少 view-assets-head');
+    assert(indexHtml.includes('id="view-market-head"'), '缺少 view-market-head');
+    for (const t of ['assets', 'trade', 'waterlevel', 'watch']) {
+        assert(indexHtml.includes(`data-toggle-tab="${t}"`), `缺少切換按鈕 ${t}`);
+    }
+});
+test('switchTab 合併頁面對照正確', () => {
+    assert(indexHtml.includes("['view-rebalance', 'view-target']"), '再平衡應與目標配置同頁');
+    assert(indexHtml.includes("['view-assets-head', 'view-assets']"), '資產應含共用頁首');
+    assert(indexHtml.includes("['view-assets-head', 'view-trade']"), '交易應含共用頁首');
+    assert(indexHtml.includes("['view-market-head', 'view-waterlevel']"), '市場水位應含共用頁首');
+    assert(indexHtml.includes("['view-market-head', 'view-watch']"), '追蹤應含共用頁首');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
