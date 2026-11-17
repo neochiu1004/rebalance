@@ -531,5 +531,72 @@ test('個股明細有持股趨勢區（圖+表）在每日列表下方', () => {
     assert(indexHtml.indexOf('id="holding-trend-section"') < indexHtml.indexOf('id="transaction-list-container"'), '趨勢區應在單筆明細上方');
 });
 
+// ---------- 大盤高點（market.js computeTaiexHighs） ----------
+test('computeTaiexHighs 前高排除昨日與今日（即使昨/今更高）、突破與區間位置', () => {
+    const history = [
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 105, high: 120, low: 100, close: 115 },
+        { date: '2026-01-07', open: 115, high: 130, low: 110, close: 125 },
+        { date: '2026-01-08', open: 125, high: 140, low: 120, close: 135 }
+    ];
+    const today = { open: 135, high: 150, low: 130, close: 145 };
+    const r = run(`computeTaiexHighs(${JSON.stringify(history)}, ${JSON.stringify(today)}, '2026-01-09')`);
+    assert(r.todayDate === '2026-01-09' && r.todayHigh === 150 && r.todayClose === 145, '今日取盤中報價');
+    assert(r.yesterdayHigh === 140 && r.yesterdayDate === '2026-01-08', '昨日高取緊鄰前一交易日: ' + r.yesterdayHigh);
+    assert(r.prevHigh === 130 && r.prevHighDate === '2026-01-07', '前高排除昨日與今日: ' + r.prevHigh);
+    approx(r.distToPrevHighPoints, 20, 0.001, '距前高點數');
+    approx(r.distToPrevHighPct, (150 / 130 - 1) * 100, 0.001, '距前高%');
+    assert(r.breakthrough === true, '今日高 >= 前高應為突破');
+    approx(r.positionPct, 75, 0.001, '現價位於今日區間%');
+});
+test('computeTaiexHighs 未突破、盤中報價覆蓋同日歷史列', () => {
+    const history = [
+        { date: '2026-01-05', open: 190, high: 200, low: 185, close: 195 },
+        { date: '2026-01-06', open: 170, high: 180, low: 165, close: 175 },
+        { date: '2026-01-07', open: 160, high: 170, low: 158, close: 168 }
+    ];
+    const today = { open: 160, high: 175, low: 155, close: 165 };
+    const r = run(`computeTaiexHighs(${JSON.stringify(history)}, ${JSON.stringify(today)}, '2026-01-07')`);
+    assert(r.todayHigh === 175, '同日以盤中報價為準: ' + r.todayHigh);
+    assert(r.yesterdayHigh === 180 && r.yesterdayDate === '2026-01-06', '昨日高: ' + r.yesterdayHigh);
+    assert(r.prevHigh === 200 && r.prevHighDate === '2026-01-05', '前高: ' + r.prevHigh);
+    approx(r.distToPrevHighPoints, -25, 0.001, '距前高點數為負');
+    approx(r.distToPrevHighPct, -12.5, 0.001, '距前高%為負');
+    assert(r.breakthrough === false, '未突破');
+    approx(r.positionPct, 50, 0.001, '區間位置');
+});
+test('computeTaiexHighs 週末無今日報價 → 最後一根歷史 K 為今日', () => {
+    const history = [
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 120, high: 130, low: 115, close: 125 },
+        { date: '2026-01-07', open: 115, high: 120, low: 110, close: 118 },
+        { date: '2026-01-08', open: 118, high: 125, low: 112, close: 122 }
+    ];
+    const r = run(`computeTaiexHighs(${JSON.stringify(history)}, null, '2026-01-10')`);
+    assert(r.todayDate === '2026-01-08' && r.todayHigh === 125, '今日=最後交易日: ' + r.todayDate);
+    assert(r.yesterdayHigh === 120 && r.yesterdayDate === '2026-01-07', '昨日高: ' + r.yesterdayHigh);
+    assert(r.prevHigh === 130 && r.prevHighDate === '2026-01-06', '前高排除今/昨: ' + r.prevHigh);
+    assert(r.breakthrough === false, '未突破');
+    approx(r.positionPct, (122 - 112) / (125 - 112) * 100, 0.001, '區間位置');
+});
+test('computeTaiexHighs 今日區間除零保護（高=低）', () => {
+    const history = [
+        { date: '2026-01-05', open: 88, high: 90, low: 85, close: 89 },
+        { date: '2026-01-06', open: 92, high: 95, low: 90, close: 94 },
+        { date: '2026-01-07', open: 96, high: 98, low: 94, close: 97 }
+    ];
+    const today = { open: 100, high: 100, low: 100, close: 100 };
+    const r = run(`computeTaiexHighs(${JSON.stringify(history)}, ${JSON.stringify(today)}, '2026-01-08')`);
+    assert(r.positionPct === 50, '高=低時 positionPct 應為 50: ' + r.positionPct);
+    assert(r.yesterdayHigh === 98 && r.prevHigh === 95, '昨高/前高');
+    assert(r.breakthrough === true, '100 >= 95 突破');
+});
+test('大盤高點卡在指數條下方且預設折疊（index.html 結構）', () => {
+    assert(indexHtml.includes('id="taiex-highs-card"'), '缺少大盤高點卡');
+    assert(indexHtml.includes('id="taiex-highs-body" class="hidden"'), '展開區預設應 hidden（折疊）');
+    assert(indexHtml.includes('id="taiex-highs-chart"'), '缺少高點圖 canvas');
+    assert(indexHtml.indexOf('id="market-bar"') < indexHtml.indexOf('id="taiex-highs-card"'), '卡片應在指數條下方');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

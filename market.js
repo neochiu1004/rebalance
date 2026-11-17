@@ -106,7 +106,10 @@ async function fetchIndexQuote(symbol) {
         const q = await res.json();
         const price = Number(q?.closePrice ?? q?.lastPrice ?? q?.previousClose) || 0;
         if (!price) return null;
-        return { price, changePercent: Number(q?.changePercent) || 0, change: Number(q?.change) || 0 };
+        return {
+            price, changePercent: Number(q?.changePercent) || 0, change: Number(q?.change) || 0,
+            open: Number(q?.openPrice) || null, high: Number(q?.highPrice) || null, low: Number(q?.lowPrice) || null
+        };
     } catch { return null; }
 }
 
@@ -130,13 +133,17 @@ async function renderMarketBar() {
     const cells = [];
     if (state.apiKey) {
         const [taiex, otc, etf50] = await Promise.all([fetchIndexQuote('IX0001'), fetchIndexQuote('IX0043'), fetchIndexQuote('0050')]);
+        // 大盤高點卡：沿用這次已抓到的 IX0001 今日 OHLC（零額外呼叫），展開前不另抓資料
+        if (taiex && Number(taiex.high) > 0) {
+            taiexTodayOhlc = { open: taiex.open, high: taiex.high, low: taiex.low, close: taiex.price };
+        }
         const add = (label, q) => { if (q) cells.push({ label, ...q }); };
         add('加權指數', taiex); add('櫃買指數', otc); add('元大台灣50', etf50);
     }
     const benchData = await fetchBenchmarkHistory();
     const risk = marketRiskSignal(benchData);
 
-    if (!cells.length && !risk) { el.innerHTML = ''; return; }
+    if (!cells.length && !risk) { el.innerHTML = ''; renderTaiexHighsHeader(); return; }
     const cellHtml = cells.map(c => {
         const cls = c.changePercent > 0 ? 'text-rose-600' : c.changePercent < 0 ? 'text-emerald-600' : 'text-slate-500';
         const arrow = c.changePercent > 0 ? '▲' : c.changePercent < 0 ? '▼' : '—';
@@ -146,6 +153,252 @@ async function renderMarketBar() {
     }).join('');
     const riskHtml = risk ? `<div class="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-100"><span class="w-2.5 h-2.5 rounded-full ${risk.color} animate-pulse"></span><div><div class="text-[10px] font-bold text-slate-400">大盤風險（0050）</div><div class="text-xs font-black ${risk.text}">${risk.label}・距高 ${risk.drawdown.toFixed(1)}%</div></div></div>` : '';
     el.innerHTML = `<div class="glass-card p-3.5 mb-5 flex flex-wrap items-center gap-3">${cellHtml}${riskHtml}</div>`;
+    renderTaiexHighsHeader();
+}
+
+// ---------- F5: 大盤高點卡（加權指數前高／昨日高／今日高；預設折疊，展開才抓歷史） ----------
+let taiexTodayOhlc = null;   // renderMarketBar 已抓到的 IX0001 今日 OHLC，零額外呼叫
+let taiexHighsChart = null;
+let taiexHighsExpanded = false;
+let taiexHighsResult = null; // 最近一次 computeTaiexHighs 結果，供收合列摘要使用
+
+function getTaiexHistoryCache() {
+    try { return JSON.parse(localStorage.getItem('mce_taiex_history')) || null; } catch { return null; }
+}
+
+// Fugle 歷史 K 線（IX0001，約 1 年）；localStorage 每日快取一次，比照 mce_benchmark_0050 模式
+async function fetchTaiexHistory(force = false) {
+    const cache = getTaiexHistoryCache();
+    if (!force && cache && cache.fetchedDate === localDateStr() && Array.isArray(cache.data) && cache.data.length > 0) {
+        return cache.data;
+    }
+    if (!state.apiKey) return cache?.data || [];
+    try {
+        const to = new Date();
+        const from = new Date(); from.setDate(from.getDate() - 370);
+        const url = `https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/IX0001?from=${localDateStr(from)}&to=${localDateStr(to)}&fields=open,high,low,close`;
+        const res = await fetch(url, { headers: { 'X-API-KEY': state.apiKey } });
+        if (!res.ok) return cache?.data || [];
+        const json = await res.json();
+        const rows = (Array.isArray(json?.data) ? json.data : [])
+            .map(d => ({ date: String(d?.date || ''), open: Number(d?.open), high: Number(d?.high), low: Number(d?.low), close: Number(d?.close) }))
+            .filter(d => d.date && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        if (!rows.length) return cache?.data || [];
+        try { localStorage.setItem('mce_taiex_history', JSON.stringify({ fetchedDate: localDateStr(), data: rows })); } catch {}
+        return rows;
+    } catch {
+        return cache?.data || [];
+    }
+}
+
+// 純函數：由歷史日 K + 今日盤中 OHLC 算前高／昨日高／今日高與今日位置
+// 今日盤中報價優先於同日歷史列；無今日報價（週末／假日／未開盤）時，最後一根歷史 K 即「今日」
+function computeTaiexHighs(history, todayOhlc, todayStr) {
+    const rows = (Array.isArray(history) ? history : [])
+        .map(d => ({
+            date: String(d?.date || d?.d || ''),
+            open: Number(d?.open ?? d?.o), high: Number(d?.high ?? d?.h),
+            low: Number(d?.low ?? d?.l), close: Number(d?.close ?? d?.c)
+        }))
+        .filter(d => d.date && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+    const tStr = todayStr || (typeof localDateStr === 'function' ? localDateStr() : '');
+    const todayHighIn = Number(todayOhlc?.high);
+    const hasToday = !!todayOhlc && Number.isFinite(todayHighIn) && todayHighIn > 0 && !!tStr;
+    if (hasToday) {
+        const close = Number(todayOhlc.close ?? todayOhlc.price) || todayHighIn;
+        const row = {
+            date: tStr,
+            open: Number(todayOhlc.open) || close,
+            high: todayHighIn,
+            low: Number(todayOhlc.low) || Math.min(close, todayHighIn),
+            close
+        };
+        const idx = rows.findIndex(r => r.date === tStr);
+        if (idx >= 0) rows[idx] = row; else rows.push(row);
+        rows.sort((a, b) => a.date.localeCompare(b.date));
+    }
+    if (!rows.length) return null;
+
+    const todayIdx = hasToday ? rows.findIndex(r => r.date === tStr) : rows.length - 1;
+    const today = rows[todayIdx];
+    const yesterday = todayIdx >= 1 ? rows[todayIdx - 1] : null;
+    let prevHigh = null, prevHighDate = null;
+    for (let i = 0; i < todayIdx - 1; i++) {
+        if (prevHigh === null || rows[i].high > prevHigh) { prevHigh = rows[i].high; prevHighDate = rows[i].date; }
+    }
+    const range = today.high - today.low;
+    return {
+        todayDate: today.date,
+        todayOpen: today.open, todayHigh: today.high, todayLow: today.low, todayClose: today.close,
+        yesterdayDate: yesterday ? yesterday.date : null,
+        yesterdayHigh: yesterday ? yesterday.high : null,
+        prevHigh, prevHighDate,
+        distToPrevHighPoints: prevHigh !== null ? today.high - prevHigh : null,
+        distToPrevHighPct: prevHigh !== null ? (today.high / prevHigh - 1) * 100 : null,
+        breakthrough: prevHigh !== null ? today.high >= prevHigh : null,
+        positionPct: range > 0 ? (today.close - today.low) / range * 100 : 50
+    };
+}
+
+// 收合列：只顯示今日高（沿用指數條已抓的報價）與距前高 %（歷史已載入或有本機快取時）
+function renderTaiexHighsHeader() {
+    const card = document.getElementById('taiex-highs-card');
+    if (!card) return;
+    if (!state.apiKey) { card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+    if (!taiexHighsResult) {
+        const cache = getTaiexHistoryCache();
+        if (cache && Array.isArray(cache.data) && cache.data.length) {
+            taiexHighsResult = computeTaiexHighs(cache.data, taiexTodayOhlc, localDateStr());
+        }
+    }
+    const summary = document.getElementById('taiex-highs-summary');
+    if (!summary) return;
+    const parts = [];
+    if (taiexTodayOhlc && Number(taiexTodayOhlc.high) > 0) parts.push(`今日高 ${fmtPrice(taiexTodayOhlc.high)}`);
+    if (taiexHighsResult && taiexHighsResult.distToPrevHighPct !== null && taiexHighsResult.distToPrevHighPct !== undefined) {
+        const pct = taiexHighsResult.distToPrevHighPct;
+        parts.push(`距前高 ${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`);
+    }
+    summary.textContent = parts.join('・');
+}
+
+async function toggleTaiexHighs() {
+    const body = document.getElementById('taiex-highs-body');
+    const chevron = document.getElementById('taiex-highs-chevron');
+    if (!body) return;
+    taiexHighsExpanded = !taiexHighsExpanded;
+    body.classList.toggle('hidden', !taiexHighsExpanded);
+    if (chevron) chevron.textContent = taiexHighsExpanded ? '▾' : '▸';
+    if (taiexHighsExpanded) {
+        try { await loadAndRenderTaiexHighs(); } catch (e) { console.warn('大盤高點載入失敗', e); }
+    }
+}
+
+async function loadAndRenderTaiexHighs() {
+    const history = await fetchTaiexHistory();
+    const result = computeTaiexHighs(history, taiexTodayOhlc, localDateStr());
+    taiexHighsResult = result;
+    renderTaiexHighsBody(result, history.length > 0);
+    renderTaiexHighsHeader();
+}
+
+function makeTaiexHighsPlugin(result) {
+    return {
+        id: 'taiexHighsCandle',
+        beforeDatasetsDraw(chart) {
+            if (!chart.chartArea) return;
+            const { ctx, chartArea, scales } = chart;
+            const yScale = scales.y;
+            ctx.save();
+            const drawLine = (value, color, label) => {
+                if (!Number.isFinite(value)) return;
+                const py = yScale.getPixelForValue(value);
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 1.4;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, py);
+                ctx.lineTo(chartArea.right, py);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'right';
+                ctx.fillText(`${label} ${fmtPrice(value)}`, chartArea.right - 2, py - 4);
+            };
+            drawLine(result.prevHigh, '#EF4444', '前高');
+            drawLine(result.yesterdayHigh, '#2563EB', '昨日高');
+
+            // 今日單根 K 棒（台股慣例：漲紅、跌綠，比照指數條）
+            const x = scales.x.getPixelForValue(0);
+            const rising = result.todayClose >= result.todayOpen;
+            const color = rising ? '#F43F5E' : '#10B981';
+            const candleWidth = 26;
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(x, yScale.getPixelForValue(result.todayHigh));
+            ctx.lineTo(x, yScale.getPixelForValue(result.todayLow));
+            ctx.stroke();
+            const top = Math.min(yScale.getPixelForValue(result.todayOpen), yScale.getPixelForValue(result.todayClose));
+            const height = Math.max(1, Math.abs(yScale.getPixelForValue(result.todayClose) - yScale.getPixelForValue(result.todayOpen)));
+            ctx.fillRect(x - candleWidth / 2, top, candleWidth, height);
+
+            // 現價標記
+            const cy = yScale.getPixelForValue(result.todayClose);
+            ctx.beginPath();
+            ctx.arc(x + candleWidth / 2 + 9, cy, 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#0F172A';
+            ctx.fill();
+            ctx.lineWidth = 1.6;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.stroke();
+            ctx.restore();
+        }
+    };
+}
+
+function renderTaiexHighsBody(result, hasHistory) {
+    const valuesEl = document.getElementById('taiex-highs-values');
+    const readoutEl = document.getElementById('taiex-highs-readout');
+    const noteEl = document.getElementById('taiex-highs-note');
+    const chartWrap = document.getElementById('taiex-highs-chart-wrap');
+    const canvas = document.getElementById('taiex-highs-chart');
+    if (taiexHighsChart) { taiexHighsChart.destroy(); taiexHighsChart = null; }
+
+    if (!result) {
+        if (valuesEl) valuesEl.textContent = '';
+        if (readoutEl) readoutEl.textContent = '';
+        if (chartWrap) chartWrap.classList.add('hidden');
+        if (noteEl) { noteEl.textContent = '歷史高點資料暫時無法取得'; noteEl.classList.remove('hidden'); }
+        return;
+    }
+    if (valuesEl) {
+        const seg = [];
+        seg.push(result.prevHigh !== null ? `前高 ${fmtPrice(result.prevHigh)}（${String(result.prevHighDate).slice(5)}）` : '前高 —');
+        seg.push(result.yesterdayHigh !== null ? `昨日高 ${fmtPrice(result.yesterdayHigh)}（${String(result.yesterdayDate).slice(5)}）` : '昨日高 —');
+        seg.push(`今日高 ${fmtPrice(result.todayHigh)}`);
+        valuesEl.textContent = seg.join('・');
+    }
+    const noHistory = !hasHistory || result.prevHigh === null;
+    if (noHistory) {
+        if (readoutEl) readoutEl.textContent = '';
+        if (chartWrap) chartWrap.classList.add('hidden');
+        if (noteEl) { noteEl.textContent = '歷史高點資料暫時無法取得，僅顯示今日高'; noteEl.classList.remove('hidden'); }
+        return;
+    }
+    if (noteEl) { noteEl.textContent = ''; noteEl.classList.add('hidden'); }
+    if (readoutEl) {
+        const dist = result.distToPrevHighPoints;
+        const pct = result.distToPrevHighPct;
+        readoutEl.textContent = `今日高距前高 ${dist >= 0 ? '+' : '-'}${fmtPrice(Math.abs(dist))} 點（${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%）・${result.breakthrough ? '已突破前高' : '未突破'}・現價位於今日區間 ${result.positionPct !== null ? result.positionPct.toFixed(0) + '%' : '—'}`;
+    }
+    if (chartWrap) chartWrap.classList.remove('hidden');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const vals = [result.todayLow, result.todayHigh, result.yesterdayHigh, result.prevHigh].filter(Number.isFinite);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const pad = Math.max((max - min) * 0.08, 1);
+    taiexHighsChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: [String(result.todayDate).slice(5)],
+            datasets: [{ data: [result.todayClose], borderColor: 'rgba(0,0,0,0)', backgroundColor: 'rgba(0,0,0,0)', pointRadius: 0 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+                y: { min: min - pad, max: max + pad, ticks: { font: { size: 9 }, maxTicksLimit: 6, callback: v => fmtPrice(v) } }
+            }
+        },
+        plugins: [makeTaiexHighsPlugin(result)]
+    });
 }
 
 // ---------- F3: 產業分類與配置 ----------

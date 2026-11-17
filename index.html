@@ -548,6 +548,19 @@
             </div>
 
             <div id="market-bar"></div>
+            <div id="taiex-highs-card" class="glass-card p-3.5 mb-5 hidden">
+                <button type="button" class="w-full flex items-center gap-2 text-left" onclick="toggleTaiexHighs()">
+                    <span class="text-xs font-black text-slate-800">大盤高點</span>
+                    <span class="text-[10px] font-bold text-slate-400" id="taiex-highs-summary"></span>
+                    <span class="ml-auto text-slate-400 text-xs" id="taiex-highs-chevron">▸</span>
+                </button>
+                <div id="taiex-highs-body" class="hidden">
+                    <div class="text-[11px] font-bold text-slate-500 mt-3" id="taiex-highs-values"></div>
+                    <div class="relative h-52 mt-2" id="taiex-highs-chart-wrap"><canvas id="taiex-highs-chart"></canvas></div>
+                    <div class="text-[11px] font-bold text-slate-600 mt-2" id="taiex-highs-readout"></div>
+                    <div class="text-[11px] font-bold text-amber-600 mt-2 hidden" id="taiex-highs-note"></div>
+                </div>
+            </div>
             <div class="mb-8">
                 <div class="text-5xl font-black text-slate-900 tracking-tight" id="total-asset-value">0</div>
                 <div class="text-sm font-semibold text-slate-500 mt-2">目前總值</div>
