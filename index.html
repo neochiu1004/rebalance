@@ -451,6 +451,7 @@
 
             <div class="flex-1 overflow-y-auto p-6 space-y-4">
                 <div id="stock-detail-overview-view" class="space-y-4">
+                    <div id="entry-judgement-card" class="glass-card p-5 hidden"></div>
                     <div class="glass-card p-5">
                         <h3 class="font-bold text-sm text-slate-800 mb-3">操作快捷方式</h3>
                         <button onclick="openAddTransactionForm()" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-sm shadow-md flex justify-center items-center gap-2 active:scale-[0.98] transition-all">
@@ -462,7 +463,12 @@
 
                 <div id="stock-detail-history-view" class="hidden space-y-3">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">歷史流水帳明細</span>
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">每日持股變化</span>
+                    </div>
+                    <div id="daily-changes-container" class="space-y-2.5">
+                    </div>
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">單筆明細</span>
                         <button onclick="openAddTransactionForm()" class="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">＋ 新增交易</button>
                     </div>
                     <div id="transaction-list-container" class="space-y-2.5">

@@ -368,5 +368,120 @@ test('switchTab 合併頁面對照正確', () => {
     assert(indexHtml.includes("watch: 'tab-waterlevel'"), '追蹤模式應亮市場水位標籤');
 });
 
+// ---------- 每日持股變化 + 追高/逢低判斷（方案 B） ----------
+function makeHistory(closes) {
+    return closes.map((c, i) => {
+        const d = new Date(Date.UTC(2026, 0, 1 + i));
+        return { d: d.toISOString().slice(0, 10), o: c, h: c + 1, l: c - 1, c, v: 1000 };
+    });
+}
+test('buildDailyChanges 同日多筆分組與加權均價', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 300, price: 55, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' },
+        { id: 'b', type: 'buy', price: 60, shares: 200, fee: 0, tax: 0, netAmount: 12000, date: '2026-01-05' }
+    ] };
+    const rows = run(`buildDailyChanges(${JSON.stringify(stock)})`);
+    assert(rows.length === 1, '同日應合併一列: ' + rows.length);
+    assert(rows[0].buyShares === 300 && rows[0].netChange === 300, '當日股數');
+    approx(rows[0].buyAvgPrice, 17000 / 300, 0.001, '加權買均');
+    assert(rows[0].cumShares === 300, '累計股數');
+    approx(rows[0].cumAvgCost, 17000 / 300, 0.001, '累計均價');
+});
+test('buildDailyChanges 累計均價含手續費、賣出不改均價、已實現價差', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 60, price: 55, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 20, tax: 0, netAmount: 5020, date: '2026-01-05' },
+        { id: 'b', type: 'sell', price: 60, shares: 40, fee: 10, tax: 7, netAmount: 2383, date: '2026-01-06' }
+    ] };
+    const rows = run(`buildDailyChanges(${JSON.stringify(stock)})`);
+    assert(rows.length === 2, '兩天兩列');
+    assert(rows[0].date === '2026-01-06' && rows[1].date === '2026-01-05', '新到舊排序');
+    approx(rows[1].cumAvgCost, 50.2, 0.001, '買入均價含費');
+    approx(rows[0].cumAvgCost, 50.2, 0.001, '賣出後均價不變');
+    assert(rows[0].cumShares === 60, '賣出後累計股數');
+    approx(rows[0].realizedPnl, 375, 0.001, '已實現 = 2383 - 50.2*40');
+});
+test('buildDailyChanges FIFO 批次剩餘與價差', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 50, price: 66, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' },
+        { id: 'b', type: 'buy', price: 60, shares: 100, fee: 0, tax: 0, netAmount: 6000, date: '2026-01-06' },
+        { id: 'c', type: 'sell', price: 70, shares: 150, fee: 0, tax: 0, netAmount: 10500, date: '2026-01-07' }
+    ] };
+    const rows = run(`buildDailyChanges(${JSON.stringify(stock)})`);
+    const held = rows.flatMap(r => r.remainingLots);
+    assert(held.length === 1, 'FIFO 後只剩一批: ' + held.length);
+    assert(held[0].buyPrice === 60 && held[0].remainingShares === 50, '剩第二批 50 股');
+    approx(held[0].spreadTotal, 300, 0.001, '價差 (66-60)*50');
+    approx(held[0].spreadPct, 10, 0.001, '價差 %');
+    assert(rows[0].cumShares === 50, '累計與實際持股一致');
+});
+test('buildDailyChanges 範例核對：85 股 @31.11、現價 27.95', () => {
+    const stock = { symbol: '00631L', name: '元大台灣50正2', shares: 85, price: 27.95, transactions: [
+        { id: 'a', type: 'buy', price: 31.11, shares: 85, fee: 0, tax: 0, netAmount: 2644.35, date: '2026-11-16' }
+    ] };
+    const rows = run(`buildDailyChanges(${JSON.stringify(stock)})`);
+    const lot = rows[0].remainingLots[0];
+    approx(lot.spreadPerShare, -3.16, 0.001, '每股價差');
+    approx(lot.spreadPct, -10.16, 0.01, '價差 %');
+    assert(Math.round(lot.spreadTotal) === -269, '總價差約 -269: ' + lot.spreadTotal);
+});
+test('buildDailyChanges 期初持股兜底讓總數對上', () => {
+    const stock = { symbol: '00631L', name: '元大台灣50正2', shares: 1000, price: 55, costPrice: 40, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
+    ] };
+    const rows = run(`buildDailyChanges(${JSON.stringify(stock)})`);
+    const opening = rows[rows.length - 1];
+    assert(opening.isOpening === true && opening.netChange === 900, '期初列補 900 股');
+    assert(rows[0].cumShares === 1000, '最新列累計 = 實際持股');
+});
+test('computeEntryJudgement 逢低買進（歷史足夠）', () => {
+    const closes = Array.from({ length: 70 }, (_, i) => 100 - i * (50 / 69));
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 50, costPrice: 80, transactions: [
+        { id: 'a', type: 'buy', price: 80, shares: 100, fee: 0, tax: 0, netAmount: 8000, date: '2026-01-05' }
+    ] };
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
+    assert(j.basedOnCostOnly === false, '歷史足夠不應退回');
+    assert(j.label === '逢低買進', '標籤: ' + j.label + ' pct=' + j.percentile);
+    assert(j.percentile <= 30 && j.ma20 > 50, '分位與 MA20 條件');
+});
+test('computeEntryJudgement 追高（歷史足夠）', () => {
+    const closes = Array.from({ length: 70 }, (_, i) => 50 + i * (50 / 69));
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 100, costPrice: 60, transactions: [
+        { id: 'a', type: 'buy', price: 60, shares: 100, fee: 0, tax: 0, netAmount: 6000, date: '2026-01-05' }
+    ] };
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
+    assert(j.label === '追高', '標籤: ' + j.label + ' pct=' + j.percentile);
+    assert(j.percentile >= 80 && j.ma20 < 100, '分位與 MA20 條件');
+});
+test('computeEntryJudgement 區間中段（歷史足夠）', () => {
+    const closes = Array.from({ length: 70 }, () => 50);
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 50, costPrice: 50, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
+    ] };
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
+    assert(j.basedOnCostOnly === false, '歷史足夠');
+    assert(j.label === '區間中段', '標籤: ' + j.label + ' pct=' + j.percentile);
+    approx(j.percentile, 50, 0.001, '分位 50%');
+});
+test('computeEntryJudgement 歷史不足退回成本判斷', () => {
+    const lowStock = { symbol: '2330', name: '台積電', shares: 100, price: 40, costPrice: 50, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
+    ] };
+    const low = run(`computeEntryJudgement(${JSON.stringify(lowStock)}, [])`);
+    assert(low.basedOnCostOnly === true, '應標記退回');
+    assert(low.label === '逢低買進', '現價 < 均價且 < 上次買: ' + low.label);
+    const highStock = { ...lowStock, price: 60 };
+    const high = run(`computeEntryJudgement(${JSON.stringify(highStock)}, [])`);
+    assert(high.basedOnCostOnly === true && high.label === '追高', '現價 > 均價且 > 上次買: ' + high.label);
+    const fewDays = run(`computeEntryJudgement(${JSON.stringify(lowStock)}, ${JSON.stringify(makeHistory([50, 49, 48]))})`);
+    assert(fewDays.basedOnCostOnly === true, '歷史 <60 天也退回');
+});
+test('個股明細有判斷卡與每日變化容器、單筆明細標題', () => {
+    assert(indexHtml.includes('id="entry-judgement-card"'), '缺少判斷卡容器');
+    assert(indexHtml.includes('id="daily-changes-container"'), '缺少每日變化容器');
+    assert(indexHtml.includes('單筆明細'), '原列表標題應改為單筆明細');
+    assert(indexHtml.indexOf('id="entry-judgement-card"') < indexHtml.indexOf('操作快捷方式'), '判斷卡應在總覽最上方');
+    assert(indexHtml.indexOf('id="daily-changes-container"') < indexHtml.indexOf('id="transaction-list-container"'), '每日列表應在單筆明細上方');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
