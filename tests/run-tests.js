@@ -368,13 +368,7 @@ test('switchTab 合併頁面對照正確', () => {
     assert(indexHtml.includes("watch: 'tab-waterlevel'"), '追蹤模式應亮市場水位標籤');
 });
 
-// ---------- 每日持股變化 + 追高/逢低判斷（方案 B） ----------
-function makeHistory(closes) {
-    return closes.map((c, i) => {
-        const d = new Date(Date.UTC(2026, 0, 1 + i));
-        return { d: d.toISOString().slice(0, 10), o: c, h: c + 1, l: c - 1, c, v: 1000 };
-    });
-}
+// ---------- 每日持股變化 + 追高/逢低判斷（方案 A）+ 每日持股趨勢 ----------
 test('buildDailyChanges 同日多筆分組與加權均價', () => {
     const stock = { symbol: '2330', name: '台積電', shares: 300, price: 55, transactions: [
         { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' },
@@ -433,47 +427,93 @@ test('buildDailyChanges 期初持股兜底讓總數對上', () => {
     assert(opening.isOpening === true && opening.netChange === 900, '期初列補 900 股');
     assert(rows[0].cumShares === 1000, '最新列累計 = 實際持股');
 });
-test('computeEntryJudgement 逢低買進（歷史足夠）', () => {
-    const closes = Array.from({ length: 70 }, (_, i) => 100 - i * (50 / 69));
-    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 50, costPrice: 80, transactions: [
-        { id: 'a', type: 'buy', price: 80, shares: 100, fee: 0, tax: 0, netAmount: 8000, date: '2026-01-05' }
-    ] };
-    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
-    assert(j.basedOnCostOnly === false, '歷史足夠不應退回');
-    assert(j.label === '逢低買進', '標籤: ' + j.label + ' pct=' + j.percentile);
-    assert(j.percentile <= 30 && j.ma20 > 50, '分位與 MA20 條件');
-});
-test('computeEntryJudgement 追高（歷史足夠）', () => {
-    const closes = Array.from({ length: 70 }, (_, i) => 50 + i * (50 / 69));
-    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 100, costPrice: 60, transactions: [
-        { id: 'a', type: 'buy', price: 60, shares: 100, fee: 0, tax: 0, netAmount: 6000, date: '2026-01-05' }
-    ] };
-    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
-    assert(j.label === '追高', '標籤: ' + j.label + ' pct=' + j.percentile);
-    assert(j.percentile >= 80 && j.ma20 < 100, '分位與 MA20 條件');
-});
-test('computeEntryJudgement 區間中段（歷史足夠）', () => {
-    const closes = Array.from({ length: 70 }, () => 50);
-    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 50, costPrice: 50, transactions: [
+test('computeEntryJudgement 逢低買進（方案A：現價 < 均價且 < 上次買）', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 40, costPrice: 50, transactions: [
         { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
     ] };
-    const j = run(`computeEntryJudgement(${JSON.stringify(stock)}, ${JSON.stringify(makeHistory(closes))})`);
-    assert(j.basedOnCostOnly === false, '歷史足夠');
-    assert(j.label === '區間中段', '標籤: ' + j.label + ' pct=' + j.percentile);
-    approx(j.percentile, 50, 0.001, '分位 50%');
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)})`);
+    assert(j.label === '逢低買進', '標籤: ' + j.label);
+    approx(j.lastBuyPrice, 50, 0.001, '上次買價');
+    approx(j.lowestBuyPrice, 50, 0.001, '最低買入價');
+    assert(j.avgCost > 50 && j.avgCost < 51, '均價含費: ' + j.avgCost);
 });
-test('computeEntryJudgement 歷史不足退回成本判斷', () => {
-    const lowStock = { symbol: '2330', name: '台積電', shares: 100, price: 40, costPrice: 50, transactions: [
+test('computeEntryJudgement 追高（方案A：現價 > 均價且 > 上次買）', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 60, costPrice: 50, transactions: [
         { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
     ] };
-    const low = run(`computeEntryJudgement(${JSON.stringify(lowStock)}, [])`);
-    assert(low.basedOnCostOnly === true, '應標記退回');
-    assert(low.label === '逢低買進', '現價 < 均價且 < 上次買: ' + low.label);
-    const highStock = { ...lowStock, price: 60 };
-    const high = run(`computeEntryJudgement(${JSON.stringify(highStock)}, [])`);
-    assert(high.basedOnCostOnly === true && high.label === '追高', '現價 > 均價且 > 上次買: ' + high.label);
-    const fewDays = run(`computeEntryJudgement(${JSON.stringify(lowStock)}, ${JSON.stringify(makeHistory([50, 49, 48]))})`);
-    assert(fewDays.basedOnCostOnly === true, '歷史 <60 天也退回');
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)})`);
+    assert(j.label === '追高', '標籤: ' + j.label);
+});
+test('computeEntryJudgement 區間中段（方案A：比均價貴、比上次買便宜）', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 200, price: 55, costPrice: 50, transactions: [
+        { id: 'a', type: 'buy', price: 40, shares: 100, fee: 0, tax: 0, netAmount: 4000, date: '2026-01-05' },
+        { id: 'b', type: 'buy', price: 60, shares: 100, fee: 0, tax: 0, netAmount: 6000, date: '2026-01-06' }
+    ] };
+    const j = run(`computeEntryJudgement(${JSON.stringify(stock)})`);
+    assert(j.label === '區間中段', '標籤: ' + j.label);
+    approx(j.lastBuyPrice, 60, 0.001, '上次買價取最近日');
+    approx(j.lowestBuyPrice, 40, 0.001, '最低買入價');
+});
+test('computeEntryJudgement 缺上次買價時只用均價判斷', () => {
+    const base = { symbol: '2330', name: '台積電', shares: 60, costPrice: 50, paidCost: 3000, transactions: [
+        { id: 'a', type: 'sell', price: 60, shares: 40, fee: 0, tax: 0, netAmount: 2400, date: '2026-01-06' }
+    ] };
+    const low = run(`computeEntryJudgement(${JSON.stringify({ ...base, price: 40 })})`);
+    assert(low.lastBuyPrice === null && low.lowestBuyPrice === null, '無買入紀錄');
+    assert(low.label === '逢低買進', '現價 < 均價: ' + low.label);
+    const high = run(`computeEntryJudgement(${JSON.stringify({ ...base, price: 60 })})`);
+    assert(high.label === '追高', '現價 > 均價: ' + high.label);
+    const equal = run(`computeEntryJudgement(${JSON.stringify({ ...base, price: 50 })})`);
+    assert(equal.label === '區間中段', '現價 = 均價: ' + equal.label);
+});
+test('computeEntryJudgement 無交易回傳中性結果（不渲染卡片）', () => {
+    const j = run(`computeEntryJudgement(${JSON.stringify({ symbol: '2330', name: '台積電', shares: 0, price: 50, costPrice: 50, transactions: [] })})`);
+    assert(j.label === null, '無交易標籤應為 null: ' + j.label);
+});
+test('判斷卡已移除 FinMind 抓取（方案A）', () => {
+    assert(run(`typeof ensureStockHistoryForJudgement`) === 'undefined', 'ensureStockHistoryForJudgement 應已移除');
+    assert(run(`computeEntryJudgement.length`) === 1, 'computeEntryJudgement 只吃 stock 一個參數');
+    const txJs = fs.readFileSync(path.join(root, 'transactions.js'), 'utf8');
+    assert(!txJs.includes('api.finmindtrade'), 'transactions.js 不應再呼叫 FinMind');
+    assert(!txJs.includes('僅依你的成本判斷'), '退回標記應移除');
+});
+test('buildHoldingTrend 舊到新、累計投入與方向（up/down）', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 150, price: 70, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 20, tax: 0, netAmount: 5020, date: '2026-01-05' },
+        { id: 'b', type: 'buy', price: 60, shares: 100, fee: 0, tax: 0, netAmount: 6000, date: '2026-01-06' },
+        { id: 'c', type: 'sell', price: 70, shares: 50, fee: 0, tax: 0, netAmount: 3500, date: '2026-01-07' }
+    ] };
+    const trend = run(`buildHoldingTrend(${JSON.stringify(stock)})`);
+    assert(trend.length === 3, '三個交易日三個點: ' + trend.length);
+    assert(trend[0].date === '2026-01-05' && trend[2].date === '2026-01-07', '舊到新排序');
+    assert(trend[0].netChange === 100 && trend[0].cumulativeShares === 100, '第一天累計');
+    approx(trend[0].cumulativeAvgCost, 50.2, 0.001, '第一天均價含費');
+    assert(trend[0].cumulativeInvested === 5020, '第一天累計投入: ' + trend[0].cumulativeInvested);
+    assert(trend[0].direction === 'flat', '第一點方向 flat');
+    assert(trend[1].cumulativeShares === 200 && trend[1].direction === 'up', '第二天增持 up');
+    assert(trend[1].cumulativeInvested === 11020, '第二天累計投入: ' + trend[1].cumulativeInvested);
+    assert(trend[2].netChange === -50 && trend[2].cumulativeShares === 150, '第三天減持');
+    assert(trend[2].direction === 'down', '第三天方向 down');
+    assert(trend[2].cumulativeInvested === 8265, '第三天累計投入: ' + trend[2].cumulativeInvested);
+});
+test('buildHoldingTrend 同日買賣相抵方向 flat', () => {
+    const stock = { symbol: '2330', name: '台積電', shares: 100, price: 55, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' },
+        { id: 'b', type: 'buy', price: 50, shares: 50, fee: 0, tax: 0, netAmount: 2500, date: '2026-01-06' },
+        { id: 'c', type: 'sell', price: 55, shares: 50, fee: 0, tax: 0, netAmount: 2750, date: '2026-01-06' }
+    ] };
+    const trend = run(`buildHoldingTrend(${JSON.stringify(stock)})`);
+    assert(trend.length === 2, '兩天兩點');
+    assert(trend[1].netChange === 0 && trend[1].cumulativeShares === 100, '同日相抵累計不變');
+    assert(trend[1].direction === 'flat', '方向 flat: ' + trend[1].direction);
+});
+test('buildHoldingTrend 單日與無交易', () => {
+    const one = run(`buildHoldingTrend(${JSON.stringify({ symbol: '2330', shares: 100, price: 55, transactions: [
+        { id: 'a', type: 'buy', price: 50, shares: 100, fee: 0, tax: 0, netAmount: 5000, date: '2026-01-05' }
+    ] })})`);
+    assert(one.length === 1 && one[0].direction === 'flat' && one[0].cumulativeShares === 100, '單日一點');
+    const empty = run(`buildHoldingTrend(${JSON.stringify({ symbol: '2330', shares: 0, price: 0, transactions: [] })})`);
+    assert(Array.isArray(empty) && empty.length === 0, '無交易回空陣列');
 });
 test('個股明細有判斷卡與每日變化容器、單筆明細標題', () => {
     assert(indexHtml.includes('id="entry-judgement-card"'), '缺少判斷卡容器');
@@ -481,6 +521,14 @@ test('個股明細有判斷卡與每日變化容器、單筆明細標題', () =>
     assert(indexHtml.includes('單筆明細'), '原列表標題應改為單筆明細');
     assert(indexHtml.indexOf('id="entry-judgement-card"') < indexHtml.indexOf('操作快捷方式'), '判斷卡應在總覽最上方');
     assert(indexHtml.indexOf('id="daily-changes-container"') < indexHtml.indexOf('id="transaction-list-container"'), '每日列表應在單筆明細上方');
+});
+test('個股明細有持股趨勢區（圖+表）在每日列表下方', () => {
+    assert(indexHtml.includes('id="holding-trend-section"'), '缺少持股趨勢區');
+    assert(indexHtml.includes('id="holding-trend-chart"'), '缺少趨勢圖 canvas');
+    assert(indexHtml.includes('id="holding-trend-table"'), '缺少趨勢表容器');
+    assert(indexHtml.includes('持股趨勢'), '缺少持股趨勢標題');
+    assert(indexHtml.indexOf('id="daily-changes-container"') < indexHtml.indexOf('id="holding-trend-section"'), '趨勢區應在每日列表下方');
+    assert(indexHtml.indexOf('id="holding-trend-section"') < indexHtml.indexOf('id="transaction-list-container"'), '趨勢區應在單筆明細上方');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

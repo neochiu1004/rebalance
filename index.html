@@ -467,6 +467,17 @@
                     </div>
                     <div id="daily-changes-container" class="space-y-2.5">
                     </div>
+                    <div id="holding-trend-section" class="hidden">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">持股趨勢</span>
+                        </div>
+                        <div class="p-3 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                            <div class="relative" style="height:160px">
+                                <canvas id="holding-trend-chart"></canvas>
+                            </div>
+                            <div id="holding-trend-table" class="mt-2"></div>
+                        </div>
+                    </div>
                     <div class="flex justify-between items-center mb-1">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">單筆明細</span>
                         <button onclick="openAddTransactionForm()" class="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">＋ 新增交易</button>

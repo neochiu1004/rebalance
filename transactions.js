@@ -8,6 +8,7 @@ let currentStockTab = 'overview'; // 'overview' 或 'history'
 
 // 開啟全螢幕個股資產明細視圖
 function openTransactionModal(index) {
+    destroyHoldingTrendChart();
     currentTransStockIndex = index;
     currentStockTab = 'overview';
     const stock = state.stocks[index];
@@ -29,6 +30,7 @@ function openTransactionModal(index) {
 }
 
 function closeTransactionModal() {
+    destroyHoldingTrendChart();
     const modal = document.getElementById('transaction-modal');
     const content = document.getElementById('transaction-modal-content');
     if (!modal) return;
@@ -105,6 +107,7 @@ function renderStockDetailContent() {
         if (tabHistoryBtn) tabHistoryBtn.className = 'flex-1 py-2 text-xs font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition-all';
         if (viewOverview) viewOverview.classList.remove('hidden');
         if (viewHistory) viewHistory.classList.add('hidden');
+        destroyHoldingTrendChart();
         renderEntryJudgementCard(stock);
     } else {
         if (tabHistoryBtn) tabHistoryBtn.className = 'flex-1 py-2 text-xs font-bold text-slate-900 border-b-2 border-slate-900 transition-all';
@@ -120,6 +123,7 @@ function renderTransactionList(index) {
 
     const stock = state.stocks[index];
     renderDailyChangesList(index);
+    renderHoldingTrend(index);
     const container = document.getElementById('transaction-list-container');
     if (!container) return;
     
@@ -186,7 +190,7 @@ function renderTransactionList(index) {
 }
 
 // ==========================================
-// 每日持股變化 + 追高/逢低判斷卡（方案 B）
+// 每日持股變化 + 追高/逢低判斷卡（方案 A）+ 每日持股趨勢
 // ==========================================
 
 // 單筆交易的費用/淨額：與 core.js recalculateStockFromTransactions 相同口徑
@@ -330,61 +334,12 @@ function buildDailyChanges(stock) {
     return rows.reverse();
 }
 
-// 純函數：現在買入是追高還是逢低。history 為 historyData 格式 [{ d, o, h, l, c, v }]。
-function computeEntryJudgement(stock, history) {
-    // 門檻常數（要調判斷鬆緊改這裡）
-    const LOW_PERCENTILE = 30;
-    const HIGH_PERCENTILE = 80;
-    const RANGE_DAYS = 60;
-
-    const items = (Array.isArray(history) ? history : [])
-        .map(item => ({
-            d: String((item && (item.d || item.date)) || ''),
-            c: Number(item && (item.c !== undefined ? item.c : item.close)),
-            h: Number(item && (item.h !== undefined ? item.h : (item.max !== undefined ? item.max : item.c))),
-            l: Number(item && (item.l !== undefined ? item.l : (item.min !== undefined ? item.min : item.c)))
-        }))
-        .filter(item => Number.isFinite(item.c) && item.c > 0)
-        .sort((a, b) => a.d.localeCompare(b.d));
-    const closes = items.map(item => item.c);
-
-    const currentPrice = (Number(stock && stock.price) > 0)
-        ? Number(stock.price)
-        : (closes.length > 0 ? closes[closes.length - 1] : (Number(stock && stock.costPrice) || 0));
-
-    let avgCost = Number(stock && stock.costPrice) || 0;
-    if (stock && Number(stock.shares) > 0 && typeof calculateAllInCost === 'function') {
-        const allIn = calculateAllInCost(stock, currentPrice);
-        if (allIn && allIn.averageCost > 0) avgCost = allIn.averageCost;
-    }
-
-    // 上一次買入價：最近一個有買入的日期，當日買入加權均價
-    let lastBuyPrice = null;
-    const buyTxs = (Array.isArray(stock && stock.transactions) ? stock.transactions : [])
-        .filter(t => t && (t.type === 'buy' || t.type === '買進') && Number(t.shares) > 0 && Number(t.price) > 0);
-    if (buyTxs.length > 0) {
-        const latestDate = buyTxs.map(t => String(t.date || '')).sort().pop();
-        const sameDay = buyTxs.filter(t => String(t.date || '') === latestDate);
-        const shares = sameDay.reduce((s, t) => s + Number(t.shares), 0);
-        lastBuyPrice = shares > 0 ? sameDay.reduce((s, t) => s + Number(t.price) * Number(t.shares), 0) / shares : null;
-    }
-
-    const ma = (period) => {
-        if (typeof movingAverage === 'function') return movingAverage(closes, period);
-        if (closes.length < period) return null;
-        const w = closes.slice(-period);
-        return w.reduce((s, v) => s + v, 0) / period;
-    };
-    const ma20 = ma(20);
-    const ma60 = ma(60);
-
-    let percentile = null, high60 = null, low60 = null;
-    if (items.length >= RANGE_DAYS) {
-        const range = items.slice(-RANGE_DAYS);
-        high60 = Math.max(...range.map(item => Number.isFinite(item.h) ? item.h : item.c));
-        low60 = Math.min(...range.map(item => Number.isFinite(item.l) ? item.l : item.c));
-        if (high60 > low60) percentile = (currentPrice - low60) / (high60 - low60) * 100;
-    }
+// 純函數：現在買入是追高還是逢低（方案 A：僅依自己的成本判斷，不用外部歷史資料）。
+// 均價用 calculateAllInCost（含交易成本），上次買價取最近買入日的加權均價。
+function computeEntryJudgement(stock) {
+    const txs = (Array.isArray(stock && stock.transactions) ? stock.transactions : [])
+        .filter(t => t && (t.type === 'buy' || t.type === 'sell' || t.type === '買進' || t.type === '賣出'));
+    const currentPrice = Number(stock && stock.price) || Number(stock && stock.costPrice) || 0;
 
     // 還在手上的批次（FIFO 後）：最便宜/最貴一批與價差試算
     const heldLots = buildDailyChanges(stock || {}).flatMap(row => row.remainingLots || []);
@@ -392,94 +347,58 @@ function computeEntryJudgement(stock, history) {
     const mostExpensiveLotPrice = heldLots.length > 0 ? Math.max(...heldLots.map(l => l.buyPrice)) : null;
     const pctVs = (base) => (base && base > 0 && currentPrice > 0) ? (currentPrice - base) / base * 100 : null;
 
-    const basedOnCostOnly = !(items.length >= RANGE_DAYS && ma60 !== null && percentile !== null);
-    let label;
-    if (basedOnCostOnly) {
-        const belowCost = avgCost > 0 && currentPrice < avgCost;
-        const aboveCost = avgCost > 0 && currentPrice > avgCost;
-        const belowLast = lastBuyPrice !== null && currentPrice < lastBuyPrice;
-        const aboveLast = lastBuyPrice !== null && currentPrice > lastBuyPrice;
-        if (belowCost && (lastBuyPrice === null || belowLast)) label = '逢低買進';
-        else if (aboveCost && (lastBuyPrice === null || aboveLast)) label = '追高';
-        else label = '區間中段';
-    } else {
-        const lowSignals = [percentile <= LOW_PERCENTILE, currentPrice < ma20, avgCost > 0 && currentPrice < avgCost];
-        const highSignals = [percentile >= HIGH_PERCENTILE, currentPrice > ma20, avgCost > 0 && currentPrice > avgCost];
-        const count = (arr) => arr.filter(Boolean).length;
-        if (lowSignals[0] && count(lowSignals) >= 2) label = '逢低買進';
-        else if (highSignals[0] && count(highSignals) >= 2) label = '追高';
-        else label = '區間中段';
+    let avgCost = Number(stock && stock.costPrice) || 0;
+    if (stock && Number(stock.shares) > 0 && typeof calculateAllInCost === 'function') {
+        const allIn = calculateAllInCost(stock, currentPrice);
+        if (allIn && allIn.averageCost > 0) avgCost = allIn.averageCost;
     }
 
-    return {
-        label,
-        basedOnCostOnly,
+    // 上一次買入價：最近一個有買入的日期，當日買入加權均價；歷史最低買入價：所有買入的最低價
+    let lastBuyPrice = null;
+    let lowestBuyPrice = null;
+    const buyTxs = txs.filter(t => (t.type === 'buy' || t.type === '買進') && Number(t.shares) > 0 && Number(t.price) > 0);
+    if (buyTxs.length > 0) {
+        lowestBuyPrice = Math.min(...buyTxs.map(t => Number(t.price)));
+        const latestDate = buyTxs.map(t => String(t.date || '')).sort().pop();
+        const sameDay = buyTxs.filter(t => String(t.date || '') === latestDate);
+        const shares = sameDay.reduce((s, t) => s + Number(t.shares), 0);
+        lastBuyPrice = shares > 0 ? sameDay.reduce((s, t) => s + Number(t.price) * Number(t.shares), 0) / shares : null;
+    }
+
+    const base = {
         currentPrice,
         avgCost: avgCost > 0 ? avgCost : null,
         lastBuyPrice,
-        ma20, ma60,
-        percentile, high60, low60,
+        lowestBuyPrice,
         cheapestLotPrice, mostExpensiveLotPrice,
         vsCheapestPct: pctVs(cheapestLotPrice),
         vsMostExpensivePct: pctVs(mostExpensiveLotPrice),
         vsAvgCostPerShare: (avgCost > 0 && currentPrice > 0) ? currentPrice - avgCost : null
     };
-}
 
-// 歷史不足時照 waterlevel.js fetchFinmindHighLow 的方式抓 FinMind 近 1 年並回存 historyData。
-// 失敗一律回既有資料，不丟例外、不阻塞 Modal。
-async function ensureStockHistoryForJudgement(stock) {
-    const existing = (stock && Array.isArray(stock.historyData)) ? stock.historyData : [];
-    try {
-        if (!stock || !stock.symbol) return existing;
-        if (existing.length >= 60) return existing;
-        const token = (typeof state !== 'undefined' && state.finmindToken) || '';
-        if (!token) return existing;
-        const todayStr = localDateStr();
-        if (stock.historyFetchedDate === todayStr && existing.length > 0) return existing;
+    // 完全沒有交易紀錄：回傳中性結果，判斷卡不渲染。
+    if (txs.length === 0 || !(currentPrice > 0)) return { ...base, label: null };
+    if (lastBuyPrice === null && !(avgCost > 0)) return { ...base, label: null };
 
-        const oneYearAgo = new Date();
-        oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stock.symbol}&start_date=${localDateStr(oneYearAgo)}&token=${token}`;
-        const response = await fetch(url);
-        if (!response.ok) return existing;
-        const result = await response.json();
-        if (result.msg !== 'success' && result.status !== 200) return existing;
-        const dataList = result.data || [];
-        if (dataList.length === 0) return existing;
-
-        const fetched = dataList
-            .filter(day => Number(day.close) > 0)
-            .map(day => ({
-                d: day.date,
-                o: Number(day.open) || Number(day.close),
-                h: Number(day.max) || Number(day.close),
-                l: Number(day.min) || Number(day.close),
-                c: Number(day.close),
-                v: Number(day.Trading_Volume || day.Trading_volume || day.volume || day.v || 0)
-            }));
-        if (fetched.length === 0) return existing;
-
-        const historyMap = new Map();
-        existing.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
-        fetched.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
-        let merged = [...historyMap.values()].sort((a, b) => String(a.d).localeCompare(String(b.d)));
-        if (typeof adjustForStockSplits === 'function') merged = adjustForStockSplits(merged);
-        stock.historyData = merged;
-        stock.historyFetchedDate = todayStr;
-        if (typeof saveState === 'function') saveState();
-        return merged;
-    } catch (e) {
-        return existing;
+    let label = '區間中段';
+    if (lastBuyPrice !== null && avgCost > 0) {
+        if (currentPrice < avgCost && currentPrice < lastBuyPrice) label = '逢低買進';
+        else if (currentPrice > avgCost && currentPrice > lastBuyPrice) label = '追高';
+    } else {
+        // 缺上次買價（或缺均價）時，只用另一個基準判斷；相等歸區間中段。
+        const single = avgCost > 0 ? avgCost : lastBuyPrice;
+        if (currentPrice < single) label = '逢低買進';
+        else if (currentPrice > single) label = '追高';
     }
+    return { ...base, label };
 }
 
-// 判斷卡（四簡風）：一個結論 + 現價，比較值一行小字，價差試算一行。
+// 判斷卡（四簡風）：一個結論 + 現價，比較值一行小字，價差試算一行。同步計算，不抓外部資料。
 function renderEntryJudgementCard(stock) {
     const el = document.getElementById('entry-judgement-card');
     if (!el || !stock) return;
-    const j = computeEntryJudgement(stock, Array.isArray(stock.historyData) ? stock.historyData : []);
-    if (!(j.currentPrice > 0)) {
+    const j = computeEntryJudgement(stock);
+    if (!j.label || !(j.currentPrice > 0)) {
         el.classList.add('hidden');
         el.innerHTML = '';
         return;
@@ -488,28 +407,123 @@ function renderEntryJudgementCard(stock) {
     const color = j.label === '逢低買進' ? 'text-emerald-600' : (j.label === '追高' ? 'text-rose-500' : 'text-slate-700');
     const fmtVal = (v) => (v === null || v === undefined || !Number.isFinite(v) || v === 0) ? '—' : fmtPrice(v);
     const fmtPct = (v) => (v === null || v === undefined || !Number.isFinite(v)) ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
-    const parts = [`均價 ${fmtVal(j.avgCost)}`, `上次買 ${fmtVal(j.lastBuyPrice)}`];
-    if (!j.basedOnCostOnly) {
-        parts.push(`MA20 ${fmtVal(j.ma20)}`, `MA60 ${fmtVal(j.ma60)}`, `區間分位 ${j.percentile === null ? '—' : j.percentile.toFixed(0) + '%'}`);
-    }
+    const parts = [`均價 ${fmtVal(j.avgCost)}`, `上次買 ${fmtVal(j.lastBuyPrice)}`, `最低買入 ${fmtVal(j.lowestBuyPrice)}`];
     const hasTrial = j.cheapestLotPrice !== null || j.mostExpensiveLotPrice !== null || j.vsAvgCostPerShare !== null;
     el.innerHTML = `
         <div class="flex items-center justify-between gap-3">
-            <div class="text-2xl font-black ${color}">${j.label}${j.basedOnCostOnly ? '<span class="ml-2 text-[10px] font-bold text-slate-400 align-middle">僅依你的成本判斷</span>' : ''}</div>
+            <div class="text-2xl font-black ${color}">${j.label}</div>
             <div class="text-xl font-black text-slate-900">${fmtPrice(j.currentPrice)}</div>
         </div>
         <div class="mt-2 text-[11px] font-semibold text-slate-500 flex flex-wrap gap-x-3 gap-y-1">${parts.map(p => `<span>${p}</span>`).join('')}</div>
         ${hasTrial ? `<div class="mt-1 text-[11px] font-semibold text-slate-500">現在買｜最便宜一批 ${fmtPct(j.vsCheapestPct)}｜最貴一批 ${fmtPct(j.vsMostExpensivePct)}｜均價 ${j.vsAvgCostPerShare === null ? '—' : (j.vsAvgCostPerShare >= 0 ? '+' : '') + fmtPrice(j.vsAvgCostPerShare) + '/股'}</div>` : ''}`;
+}
 
-    // 歷史不足且有 Token 才背景補抓，抓到再重畫一次；不阻塞開啟。
-    const history = Array.isArray(stock.historyData) ? stock.historyData : [];
-    if (history.length < 60 && typeof state !== 'undefined' && state.finmindToken) {
-        const idx = currentTransStockIndex;
-        ensureStockHistoryForJudgement(stock).then(h => {
-            if (h && h.length >= 60 && currentTransStockIndex === idx && currentStockTab === 'overview') {
-                renderEntryJudgementCard(stock);
-            }
-        }).catch(() => {});
+// 純函數：每日持股趨勢（由舊到新）。由 buildDailyChanges 的每日列衍生，只含真正交易日
+// （期初持股列是兜底列、不算一個點）；direction 與前一個點的累計股數比，第一點為 'flat'。
+function buildHoldingTrend(stock) {
+    const rowsAsc = [...buildDailyChanges(stock || {})].reverse();
+    let prevShares = null;
+    const points = [];
+    for (const row of rowsAsc) {
+        if (row.isOpening) continue;
+        const cumulativeShares = row.cumShares;
+        const direction = prevShares === null ? 'flat'
+            : (cumulativeShares > prevShares ? 'up' : (cumulativeShares < prevShares ? 'down' : 'flat'));
+        prevShares = cumulativeShares;
+        points.push({
+            date: row.date,
+            netChange: row.netChange,
+            cumulativeShares,
+            cumulativeAvgCost: row.cumAvgCost,
+            cumulativeInvested: Math.round(cumulativeShares * row.cumAvgCost),
+            direction
+        });
+    }
+    return points;
+}
+
+let holdingTrendChartInstance = null;
+function destroyHoldingTrendChart() {
+    if (holdingTrendChartInstance) {
+        try { holdingTrendChartInstance.destroy(); } catch (e) { /* 已銷毀 */ }
+        holdingTrendChartInstance = null;
+    }
+}
+
+// 持股趨勢（渲染）：階梯圖在上、趨勢表在下；無交易時整區隱藏。
+function renderHoldingTrend(index) {
+    const section = document.getElementById('holding-trend-section');
+    if (!section) return;
+    const stock = state.stocks[index];
+    const trend = stock ? buildHoldingTrend(stock) : [];
+    if (trend.length === 0) {
+        destroyHoldingTrendChart();
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+
+    const marker = (d) => d === 'up'
+        ? '<span class="text-emerald-600 font-black">▲</span>'
+        : (d === 'down' ? '<span class="text-rose-500 font-black">▼</span>' : '<span class="text-slate-400 font-black">—</span>');
+    const fmtChange = (v) => `${v > 0 ? '+' : ''}${fmt(v)}`;
+    const tableEl = document.getElementById('holding-trend-table');
+    if (tableEl) {
+        tableEl.innerHTML = `
+        <table class="w-full text-[11px] font-semibold text-slate-600">
+            <thead>
+                <tr class="text-slate-400 text-left border-b border-slate-100">
+                    <th class="py-1 pr-2 font-bold">日期</th>
+                    <th class="py-1 pr-2 font-bold">當日變化</th>
+                    <th class="py-1 pr-2 font-bold">累計持股</th>
+                    <th class="py-1 pr-2 font-bold">累計均價</th>
+                    <th class="py-1 font-bold text-right">累計投入</th>
+                </tr>
+            </thead>
+            <tbody>${trend.map(p => `
+                <tr class="border-b border-slate-50">
+                    <td class="py-1 pr-2">${escapeHtml(p.date || '')}</td>
+                    <td class="py-1 pr-2 ${p.netChange > 0 ? 'text-emerald-600' : (p.netChange < 0 ? 'text-rose-500' : 'text-slate-500')}">${fmtChange(p.netChange)}</td>
+                    <td class="py-1 pr-2">${fmt(p.cumulativeShares)} ${marker(p.direction)}</td>
+                    <td class="py-1 pr-2">@${fmtPrice(p.cumulativeAvgCost)}</td>
+                    <td class="py-1 text-right">NT$${fmt(p.cumulativeInvested)}</td>
+                </tr>`).join('')}
+            </tbody>
+        </table>`;
+    }
+
+    const canvas = document.getElementById('holding-trend-chart');
+    destroyHoldingTrendChart();
+    if (canvas && typeof Chart !== 'undefined' && typeof canvas.getContext === 'function') {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            holdingTrendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trend.map(p => p.date),
+                    datasets: [{
+                        label: '累計持股',
+                        data: trend.map(p => p.cumulativeShares),
+                        stepped: 'before',
+                        borderColor: '#4F7CFF',
+                        backgroundColor: 'rgba(79, 124, 255, 0.08)',
+                        fill: true,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#4F7CFF',
+                        tension: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: { ticks: { maxTicksLimit: 6 } }
+                    }
+                }
+            });
+        }
     }
 }
 
