@@ -637,6 +637,71 @@ test('pickTaiexHistoryRows 主來源優先、為空才用備援', () => {
     assert(run(`pickTaiexHistoryRows([], ${JSON.stringify(b)})`)[0].date === '2026-01-06', '主來源為空用備援');
     assert(run(`pickTaiexHistoryRows([], null)`).length === 0, '兩者皆空回空陣列');
 });
+test('buildTaiexRecentCandles 40 天歷史＋盤中今日 → 恰好 30 根、最後一根為盤中今日', () => {
+    const history = [];
+    for (let i = 0; i < 40; i++) {
+        const d = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
+        history.push({ date: d, open: 100 + i, high: 105 + i, low: 95 + i, close: 102 + i });
+    }
+    const today = { open: 200, high: 210, low: 195, close: 205 };
+    const candles = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, ${JSON.stringify(today)}, '2026-02-10')`);
+    assert(candles.length === 30, '應回傳最近 30 根: ' + candles.length);
+    const last = candles[candles.length - 1];
+    assert(last.date === '2026-02-10', '最後一根日期為今日: ' + last.date);
+    assert(last.open === 200 && last.high === 210 && last.low === 195 && last.close === 205, '最後一根使用盤中 OHLC');
+    assert(candles[0].date === '2026-01-12', '由第 12 根歷史起算（41 根合併取後 30）: ' + candles[0].date);
+    for (let i = 1; i < candles.length; i++) assert(candles[i].date > candles[i - 1].date, '日期嚴格舊→新');
+});
+test('buildTaiexRecentCandles 盤中覆蓋同日歷史列（不重複日期、根數正確）', () => {
+    const history = [
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 105, high: 120, low: 100, close: 115 },
+        { date: '2026-01-07', open: 160, high: 170, low: 158, close: 168 }
+    ];
+    const today = { open: 160, high: 175, low: 155, close: 165 };
+    const candles = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, ${JSON.stringify(today)}, '2026-01-07')`);
+    assert(candles.length === 3, '同日不重複，仍為 3 根: ' + candles.length);
+    assert(new Set(candles.map(c => c.date)).size === 3, '日期不重複');
+    const last = candles[candles.length - 1];
+    assert(last.date === '2026-01-07' && last.high === 175 && last.close === 165, '同日以盤中報價為準');
+});
+test('buildTaiexRecentCandles 不足 30 天 → 全部回傳且日期舊→新', () => {
+    const history = [
+        { date: '2026-01-07', open: 115, high: 120, low: 110, close: 118 },
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 105, high: 118, low: 100, close: 112 }
+    ];
+    const candles = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, null, '2026-01-10')`);
+    assert(candles.length === 3, '不足 30 根全回: ' + candles.length);
+    assert(candles[0].date === '2026-01-05' && candles[1].date === '2026-01-06' && candles[2].date === '2026-01-07', '未排序輸入也回舊→新');
+    const five = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, null, '2026-01-10', 2)`);
+    assert(five.length === 2 && five[1].date === '2026-01-07', 'count 參數生效');
+});
+test('buildTaiexRecentCandles 無盤中報價 → 最後一根為最後一根歷史 K', () => {
+    const history = [
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 120, high: 130, low: 115, close: 125 },
+        { date: '2026-01-08', open: 118, high: 125, low: 112, close: 122 }
+    ];
+    const candles = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, null, '2026-01-10')`);
+    const last = candles[candles.length - 1];
+    assert(last.date === '2026-01-08' && last.high === 125 && last.close === 122, '週末情境最後一根=最後交易日: ' + last.date);
+});
+test('buildTaiexRecentCandles 過濾無效列（規則與 computeTaiexHighs 相同）', () => {
+    const history = [
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-06', open: 105, high: 120, low: 100, close: 0 },
+        { date: '2026-01-07', open: 115, high: null, low: 110, close: 125 },
+        { date: '', open: 1, high: 2, low: 1, close: 1 },
+        { date: '2026-01-08', open: -5, high: 130, low: 110, close: 125 },
+        { d: '2026-01-09', o: 120, h: 128, l: 118, c: 126 }
+    ];
+    const candles = run(`buildTaiexRecentCandles(${JSON.stringify(history)}, null, '2026-01-10')`);
+    assert(candles.length === 2, '只保留 OHLC 皆有效且 >0 的列: ' + candles.length);
+    assert(candles[0].date === '2026-01-05' && candles[1].date === '2026-01-09', '有效列舊→新');
+    assert(candles[1].high === 128 && candles[1].low === 118, '支援 d/o/h/l/c 短欄位正規化');
+    assert(run(`buildTaiexRecentCandles(null, null, '2026-01-10')`).length === 0, '非陣列回空陣列');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

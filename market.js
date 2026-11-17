@@ -254,9 +254,10 @@ async function fetchTaiexHistory(force = false) {
     return rows;
 }
 
-// 純函數：由歷史日 K + 今日盤中 OHLC 算前高／昨日高／今日高與今日位置
-// 今日盤中報價優先於同日歷史列；無今日報價（週末／假日／未開盤）時，最後一根歷史 K 即「今日」
-function computeTaiexHighs(history, todayOhlc, todayStr) {
+// 純函數：歷史日 K 正規化＋日期舊→新排序，並疊上今日盤中 OHLC（同日以盤中為準）。
+// computeTaiexHighs 與 buildTaiexRecentCandles 共用同一份合併邏輯，避免兩邊分歧。
+// 無今日報價（週末／假日／未開盤）時不補列，最後一根歷史 K 即「今日」。
+function mergeTaiexCandles(history, todayOhlc, todayStr) {
     const rows = (Array.isArray(history) ? history : [])
         .map(d => ({
             date: String(d?.date || d?.d || ''),
@@ -282,6 +283,20 @@ function computeTaiexHighs(history, todayOhlc, todayStr) {
         if (idx >= 0) rows[idx] = row; else rows.push(row);
         rows.sort((a, b) => a.date.localeCompare(b.date));
     }
+    return { rows, hasToday, tStr };
+}
+
+// 純函數：近 N 個交易日的 K 棒（日期舊→新），最後一根恆為「今日」（盤中報價優先；無報價時為最後一根歷史 K）
+function buildTaiexRecentCandles(history, todayOhlc, todayStr, count = 30) {
+    const { rows } = mergeTaiexCandles(history, todayOhlc, todayStr);
+    const n = Number.isFinite(count) && count > 0 ? Math.floor(count) : 30;
+    return rows.slice(-n);
+}
+
+// 純函數：由歷史日 K + 今日盤中 OHLC 算前高／昨日高／今日高與今日位置
+// 今日盤中報價優先於同日歷史列；無今日報價（週末／假日／未開盤）時，最後一根歷史 K 即「今日」
+function computeTaiexHighs(history, todayOhlc, todayStr) {
+    const { rows, hasToday, tStr } = mergeTaiexCandles(history, todayOhlc, todayStr);
     if (!rows.length) return null;
 
     const todayIdx = hasToday ? rows.findIndex(r => r.date === tStr) : rows.length - 1;
@@ -344,11 +359,13 @@ async function loadAndRenderTaiexHighs() {
     const history = await fetchTaiexHistory();
     const result = computeTaiexHighs(history, taiexTodayOhlc, localDateStr());
     taiexHighsResult = result;
-    renderTaiexHighsBody(result, history.length > 0);
+    const candles = buildTaiexRecentCandles(history, taiexTodayOhlc, localDateStr());
+    renderTaiexHighsBody(result, history.length > 0, candles);
     renderTaiexHighsHeader();
 }
 
-function makeTaiexHighsPlugin(result) {
+function makeTaiexHighsPlugin(result, candles) {
+    const list = Array.isArray(candles) ? candles : [];
     return {
         id: 'taiexHighsCandle',
         beforeDatasetsDraw(chart) {
@@ -375,37 +392,42 @@ function makeTaiexHighsPlugin(result) {
             drawLine(result.prevHigh, '#EF4444', '前高');
             drawLine(result.yesterdayHigh, '#2563EB', '昨日高');
 
-            // 今日單根 K 棒（台股慣例：漲紅、跌綠，比照指數條）
-            const x = scales.x.getPixelForValue(0);
-            const rising = result.todayClose >= result.todayOpen;
-            const color = rising ? '#F43F5E' : '#10B981';
-            const candleWidth = 26;
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color;
-            ctx.lineWidth = 1.6;
-            ctx.beginPath();
-            ctx.moveTo(x, yScale.getPixelForValue(result.todayHigh));
-            ctx.lineTo(x, yScale.getPixelForValue(result.todayLow));
-            ctx.stroke();
-            const top = Math.min(yScale.getPixelForValue(result.todayOpen), yScale.getPixelForValue(result.todayClose));
-            const height = Math.max(1, Math.abs(yScale.getPixelForValue(result.todayClose) - yScale.getPixelForValue(result.todayOpen)));
-            ctx.fillRect(x - candleWidth / 2, top, candleWidth, height);
+            if (list.length) {
+                // 近 30 個交易日逐根 K 棒（台股慣例：漲紅、跌綠，比照指數條）；棒寬依根數自動調整
+                const slot = (chartArea.right - chartArea.left) / list.length;
+                const candleWidth = Math.max(4, Math.min(14, slot * 0.62));
+                list.forEach((c, i) => {
+                    const x = scales.x.getPixelForValue(i);
+                    const color = c.close >= c.open ? '#F43F5E' : '#10B981';
+                    ctx.strokeStyle = color;
+                    ctx.fillStyle = color;
+                    ctx.lineWidth = 1.4;
+                    ctx.beginPath();
+                    ctx.moveTo(x, yScale.getPixelForValue(c.high));
+                    ctx.lineTo(x, yScale.getPixelForValue(c.low));
+                    ctx.stroke();
+                    const top = Math.min(yScale.getPixelForValue(c.open), yScale.getPixelForValue(c.close));
+                    const height = Math.max(1, Math.abs(yScale.getPixelForValue(c.close) - yScale.getPixelForValue(c.open)));
+                    ctx.fillRect(x - candleWidth / 2, top, candleWidth, height);
+                });
 
-            // 現價標記
-            const cy = yScale.getPixelForValue(result.todayClose);
-            ctx.beginPath();
-            ctx.arc(x + candleWidth / 2 + 9, cy, 3.5, 0, Math.PI * 2);
-            ctx.fillStyle = '#0F172A';
-            ctx.fill();
-            ctx.lineWidth = 1.6;
-            ctx.strokeStyle = '#FFFFFF';
-            ctx.stroke();
+                // 現價標記（最後一根 K 的收盤，恆為最新一根）
+                const lastX = scales.x.getPixelForValue(list.length - 1);
+                const cy = yScale.getPixelForValue(list[list.length - 1].close);
+                ctx.beginPath();
+                ctx.arc(lastX + candleWidth / 2 + 6, cy, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#0F172A';
+                ctx.fill();
+                ctx.lineWidth = 1.6;
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.stroke();
+            }
             ctx.restore();
         }
     };
 }
 
-function renderTaiexHighsBody(result, hasHistory) {
+function renderTaiexHighsBody(result, hasHistory, candles) {
     const valuesEl = document.getElementById('taiex-highs-values');
     const readoutEl = document.getElementById('taiex-highs-readout');
     const noteEl = document.getElementById('taiex-highs-note');
@@ -442,24 +464,27 @@ function renderTaiexHighsBody(result, hasHistory) {
     }
     if (chartWrap) chartWrap.classList.remove('hidden');
     if (!canvas || typeof Chart === 'undefined') return;
-    const vals = [result.todayLow, result.todayHigh, result.yesterdayHigh, result.prevHigh].filter(Number.isFinite);
+    const list = Array.isArray(candles) ? candles : [];
+    if (!list.length) return;
+    // Y 軸涵蓋近 30 根 K 的高低與前高／昨日高兩條線（前高遠高於近月區間時 K 棒偏低屬預期，不裁切線）
+    const vals = [...list.flatMap(c => [c.low, c.high]), result.yesterdayHigh, result.prevHigh].filter(Number.isFinite);
     const min = Math.min(...vals), max = Math.max(...vals);
     const pad = Math.max((max - min) * 0.08, 1);
     taiexHighsChart = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
-            labels: [String(result.todayDate).slice(5)],
-            datasets: [{ data: [result.todayClose], borderColor: 'rgba(0,0,0,0)', backgroundColor: 'rgba(0,0,0,0)', pointRadius: 0 }]
+            labels: list.map(c => String(c.date).slice(5)),
+            datasets: [{ data: list.map(c => c.close), borderColor: 'rgba(0,0,0,0)', backgroundColor: 'rgba(0,0,0,0)', pointRadius: 0 }]
         },
         options: {
             responsive: true, maintainAspectRatio: false, animation: false,
             plugins: { legend: { display: false }, tooltip: { enabled: false } },
             scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+                x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 6 } },
                 y: { min: min - pad, max: max + pad, ticks: { font: { size: 9 }, maxTicksLimit: 6, callback: v => fmtPrice(v) } }
             }
         },
-        plugins: [makeTaiexHighsPlugin(result)]
+        plugins: [makeTaiexHighsPlugin(result, list)]
     });
 }
 
