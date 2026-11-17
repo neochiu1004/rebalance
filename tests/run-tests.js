@@ -597,6 +597,46 @@ test('大盤高點卡在指數條下方且預設折疊（index.html 結構）', 
     assert(indexHtml.includes('id="taiex-highs-chart"'), '缺少高點圖 canvas');
     assert(indexHtml.indexOf('id="market-bar"') < indexHtml.indexOf('id="taiex-highs-card"'), '卡片應在指數條下方');
 });
+test('parseFinMindTaiexRows 對照 max→高/min→低、過濾無效列、日期舊→新', () => {
+    const raw = [
+        { date: '2026-01-07', open: 115, max: 130, min: 110, close: 125 },
+        { date: '2026-01-05', open: 100, max: 110, min: 95, close: 105 },
+        { date: '2026-01-06', open: 105, max: 120, min: 100, close: 0 },
+        { date: '2026-01-08', open: 125, max: null, min: 120, close: 135 },
+        { date: '', open: 1, max: 2, min: 1, close: 1 },
+        { date: '2026-01-09', open: 'abc', max: 140, min: 120, close: 135 }
+    ];
+    const rows = run(`parseFinMindTaiexRows(${JSON.stringify(raw)})`);
+    assert(rows.length === 2, '只保留 OHLC 皆有效且 close>0 的列: ' + rows.length);
+    assert(rows[0].date === '2026-01-05' && rows[1].date === '2026-01-07', '日期舊→新排序');
+    assert(rows[1].high === 130 && rows[1].low === 110, 'max→high、min→low 對照');
+    assert(rows[0].open === 100 && rows[0].close === 105, 'open/close 對照');
+    assert(run(`parseFinMindTaiexRows(null)`).length === 0, '非陣列回空陣列');
+});
+test('parseFugleTaiexRows 對照 high/low、過濾無效列、日期舊→新', () => {
+    const raw = [
+        { date: '2026-01-06', open: 105, high: 120, low: 100, close: 115 },
+        { date: '2026-01-05', open: 100, high: 110, low: 95, close: 105 },
+        { date: '2026-01-07', open: 115, high: 130, low: 110, close: -1 }
+    ];
+    const rows = run(`parseFugleTaiexRows(${JSON.stringify(raw)})`);
+    assert(rows.length === 2 && rows[0].date === '2026-01-05' && rows[1].high === 120, 'Fugle 列正規化');
+});
+test('Fugle 備援查詢區間小於 1 年（常數與 URL）', () => {
+    assert(run(`TAIEX_FUGLE_LOOKBACK_DAYS`) < 365, '回溯天數必須 < 365，避免 Fugle 回 400');
+    const range = run(`getTaiexFugleDateRange(new Date(2026, 0, 10))`);
+    assert(range.to === '2026-01-10', 'to=今天');
+    const diffDays = Math.round((new Date(range.to) - new Date(range.from)) / 86400000);
+    assert(diffDays === run(`TAIEX_FUGLE_LOOKBACK_DAYS`) && diffDays < 365, '區間天數=常數且 <365: ' + diffDays);
+    const url = run(`buildTaiexFugleHistoryUrl('${range.from}', '${range.to}')`);
+    assert(url.includes('/stock/historical/candles/IX0001') && url.includes(`from=${range.from}`) && url.includes(`to=${range.to}`), 'URL 帶入區間');
+});
+test('pickTaiexHistoryRows 主來源優先、為空才用備援', () => {
+    const a = [{ date: '2026-01-05' }], b = [{ date: '2026-01-06' }];
+    assert(run(`pickTaiexHistoryRows(${JSON.stringify(a)}, ${JSON.stringify(b)})`)[0].date === '2026-01-05', '主來源有資料優先');
+    assert(run(`pickTaiexHistoryRows([], ${JSON.stringify(b)})`)[0].date === '2026-01-06', '主來源為空用備援');
+    assert(run(`pickTaiexHistoryRows([], null)`).length === 0, '兩者皆空回空陣列');
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

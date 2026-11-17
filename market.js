@@ -166,30 +166,92 @@ function getTaiexHistoryCache() {
     try { return JSON.parse(localStorage.getItem('mce_taiex_history')) || null; } catch { return null; }
 }
 
-// Fugle 歷史 K 線（IX0001，約 1 年）；localStorage 每日快取一次，比照 mce_benchmark_0050 模式
+// 指數歷史日 K：以 FinMind TaiwanStockPrice（data_id=TAIEX）為主，比照 watch.js 抓個股歷史的寫法；
+// FinMind 無 Token／失敗／無資料時，備援 Fugle 歷史 K 線。localStorage 每日快取一次，比照 mce_benchmark_0050 模式。
+// Fugle 歷史 K 線單次查詢區間須小於 1 年，恰好或超過 1 年會回 400，故備援回溯天數必須 < 365。
+const TAIEX_FUGLE_LOOKBACK_DAYS = 360;
+
+// 純函數：FinMind 列（open/max/min/close）→ 統一 OHLC 列（max=高、min=低），過濾無效列、日期舊→新
+function parseFinMindTaiexRows(data) {
+    return (Array.isArray(data) ? data : [])
+        .map(d => ({ date: String(d?.date || ''), open: Number(d?.open), high: Number(d?.max), low: Number(d?.min), close: Number(d?.close) }))
+        .filter(d => d.date && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
+        .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// 純函數：Fugle 列（open/high/low/close）→ 統一 OHLC 列，過濾無效列、日期舊→新
+function parseFugleTaiexRows(data) {
+    return (Array.isArray(data) ? data : [])
+        .map(d => ({ date: String(d?.date || ''), open: Number(d?.open), high: Number(d?.high), low: Number(d?.low), close: Number(d?.close) }))
+        .filter(d => d.date && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
+        .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// 純函數：主來源有資料優先，否則用備援
+function pickTaiexHistoryRows(primaryRows, fallbackRows) {
+    if (Array.isArray(primaryRows) && primaryRows.length > 0) return primaryRows;
+    return Array.isArray(fallbackRows) ? fallbackRows : [];
+}
+
+async function fetchTaiexHistoryFromFinMind() {
+    if (!state.finmindToken) return [];
+    const startDate = new Date(); startDate.setDate(startDate.getDate() - 365);
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=TAIEX&start_date=${localDateStr(startDate)}&token=${state.finmindToken}`;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) { console.warn(`[大盤高點] FinMind TAIEX 歷史請求失敗：HTTP ${res.status}`); return []; }
+        const json = await res.json();
+        if (json && json.status !== undefined && Number(json.status) !== 200) {
+            console.warn(`[大盤高點] FinMind TAIEX 歷史回傳錯誤：${json.msg || json.status}`);
+            return [];
+        }
+        const rows = parseFinMindTaiexRows(json?.data);
+        if (!rows.length) console.warn('[大盤高點] FinMind TAIEX 歷史回傳無有效資料');
+        return rows;
+    } catch (e) {
+        console.warn('[大盤高點] FinMind TAIEX 歷史請求例外', e);
+        return [];
+    }
+}
+
+// 純函數：Fugle 備援的查詢區間（to=今天，from=今天-備援回溯天數）
+function getTaiexFugleDateRange(today = new Date()) {
+    const to = new Date(today);
+    const from = new Date(today); from.setDate(from.getDate() - TAIEX_FUGLE_LOOKBACK_DAYS);
+    return { from: localDateStr(from), to: localDateStr(to) };
+}
+
+function buildTaiexFugleHistoryUrl(fromStr, toStr) {
+    return `https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/IX0001?from=${fromStr}&to=${toStr}&fields=open,high,low,close`;
+}
+
+async function fetchTaiexHistoryFromFugle() {
+    if (!state.apiKey) return [];
+    try {
+        const { from, to } = getTaiexFugleDateRange();
+        const res = await fetch(buildTaiexFugleHistoryUrl(from, to), { headers: { 'X-API-KEY': state.apiKey } });
+        if (!res.ok) { console.warn(`[大盤高點] Fugle 歷史 K 線請求失敗：HTTP ${res.status}`); return []; }
+        const json = await res.json();
+        const rows = parseFugleTaiexRows(json?.data);
+        if (!rows.length) console.warn('[大盤高點] Fugle 歷史 K 線回傳無有效資料');
+        return rows;
+    } catch (e) {
+        console.warn('[大盤高點] Fugle 歷史 K 線請求例外', e);
+        return [];
+    }
+}
+
 async function fetchTaiexHistory(force = false) {
     const cache = getTaiexHistoryCache();
     if (!force && cache && cache.fetchedDate === localDateStr() && Array.isArray(cache.data) && cache.data.length > 0) {
         return cache.data;
     }
-    if (!state.apiKey) return cache?.data || [];
-    try {
-        const to = new Date();
-        const from = new Date(); from.setDate(from.getDate() - 370);
-        const url = `https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/IX0001?from=${localDateStr(from)}&to=${localDateStr(to)}&fields=open,high,low,close`;
-        const res = await fetch(url, { headers: { 'X-API-KEY': state.apiKey } });
-        if (!res.ok) return cache?.data || [];
-        const json = await res.json();
-        const rows = (Array.isArray(json?.data) ? json.data : [])
-            .map(d => ({ date: String(d?.date || ''), open: Number(d?.open), high: Number(d?.high), low: Number(d?.low), close: Number(d?.close) }))
-            .filter(d => d.date && [d.open, d.high, d.low, d.close].every(v => Number.isFinite(v) && v > 0))
-            .sort((a, b) => a.date.localeCompare(b.date));
-        if (!rows.length) return cache?.data || [];
-        try { localStorage.setItem('mce_taiex_history', JSON.stringify({ fetchedDate: localDateStr(), data: rows })); } catch {}
-        return rows;
-    } catch {
-        return cache?.data || [];
-    }
+    const finmindRows = await fetchTaiexHistoryFromFinMind();
+    // FinMind 有資料就不打 Fugle；為空才走備援（短路求值）
+    const rows = pickTaiexHistoryRows(finmindRows, finmindRows.length ? [] : await fetchTaiexHistoryFromFugle());
+    if (!rows.length) return cache?.data || [];
+    try { localStorage.setItem('mce_taiex_history', JSON.stringify({ fetchedDate: localDateStr(), data: rows })); } catch {}
+    return rows;
 }
 
 // 純函數：由歷史日 K + 今日盤中 OHLC 算前高／昨日高／今日高與今日位置
