@@ -127,7 +127,10 @@ function calculateDailyPortfolioHistoryUncached() {
     if (dates.length === 0) return [];
 
     const initialDate = dates[0];
-    const cashEventsByDate = new Map();
+    // 交易現金事件改用「日期排序清單＋指標」重演（與下方外部現金流同一種模式）。
+    // 舊寫法把事件放進 Map、逐列以交易日期精確對照，週末／假日成交的交易
+    // 永遠對不到任何交易日列，整筆被吞掉（2026-11-15 週日的底倉買進就是這樣漏算的）。
+    const cashEvents = [];
     const seriesState = stocksWithHistory.map(series => {
         const futureTransactions = series.transactions.filter(transaction => transaction.date > initialDate);
         const startingShares = futureTransactions.reduce((shares, transaction) =>
@@ -144,10 +147,22 @@ function calculateDailyPortfolioHistoryUncached() {
                     shares: Number(transaction.shares) || 0,
                     stock: series.stock
                 }).netAmount;
-            cashEventsByDate.set(transaction.date, (cashEventsByDate.get(transaction.date) || 0) + (type === 'buy' ? -netAmount : netAmount));
+            cashEvents.push({ date: transaction.date, amount: type === 'buy' ? -netAmount : netAmount });
         });
-        return { ...series, shares: Math.max(0, startingShares), priceIndex: 0, currentPrice: null };
+        return { ...series, futureTransactions, txIndex: 0, shares: Math.max(0, startingShares), priceIndex: 0, currentPrice: null };
     });
+    cashEvents.sort((a, b) => a.date.localeCompare(b.date));
+    let cashEventIndex = 0;
+    // 股數重演共用：把日期 ≤ 指定日期的未來交易依序套用到股數（買加賣減）。
+    const applyTransactionsUpTo = (series, date) => {
+        while (series.txIndex < series.futureTransactions.length && series.futureTransactions[series.txIndex].date <= date) {
+            const transaction = series.futureTransactions[series.txIndex];
+            series.shares += getTransactionType(transaction) === 'buy'
+                ? Number(transaction.shares) || 0
+                : -(Number(transaction.shares) || 0);
+            series.txIndex += 1;
+        }
+    };
 
     // 非交易現金流（入金／出金／手動調整）：重建現金時要計入餘額，但算每日盈虧時必須排除，
     // 否則入金會被誤認成獲利、出金被誤認成虧損。
@@ -161,24 +176,24 @@ function calculateDailyPortfolioHistoryUncached() {
     let externalFlowIndex = externalFlows.findIndex(flow => flow.date > initialDate);
     if (externalFlowIndex === -1) externalFlowIndex = externalFlows.length;
 
-    const startingCash = (Number(state.cash) || 0) - [...cashEventsByDate.values()].reduce((sum, value) => sum + value, 0) - externalFlowTotalAfterStart;
+    const startingCash = (Number(state.cash) || 0) - cashEvents.reduce((sum, event) => sum + event.amount, 0) - externalFlowTotalAfterStart;
     let cashValue = startingCash;
     const rows = dates.map((date, index) => {
         let externalFlowToday = 0;
+        // 交易（現金與股數）以「日期 ≤ 當列日期」推進指標生效：週末／假日的交易
+        // 會在下一個交易日列反映，不再被漏掉。未來交易的日期都 > initialDate，
+        // 第一列不會套用到任何交易，與舊行為一致。
+        while (cashEventIndex < cashEvents.length && cashEvents[cashEventIndex].date <= date) {
+            cashValue += cashEvents[cashEventIndex].amount;
+            cashEventIndex += 1;
+        }
+        seriesState.forEach(series => applyTransactionsUpTo(series, date));
         if (index > 0) {
-            cashValue += cashEventsByDate.get(date) || 0;
             while (externalFlowIndex < externalFlows.length && externalFlows[externalFlowIndex].date <= date) {
                 externalFlowToday += externalFlows[externalFlowIndex].amount;
                 externalFlowIndex += 1;
             }
             cashValue += externalFlowToday;
-            seriesState.forEach(series => series.transactions
-                .filter(transaction => transaction.date === date)
-                .forEach(transaction => {
-                    series.shares += getTransactionType(transaction) === 'buy'
-                        ? Number(transaction.shares) || 0
-                        : -(Number(transaction.shares) || 0);
-                }));
         }
         let stockValue = 0;
         seriesState.forEach(series => {
@@ -193,6 +208,9 @@ function calculateDailyPortfolioHistoryUncached() {
 
     const todayStr = localDateStr();
     if (rows.length > 0 && rows[rows.length - 1].date < todayStr) {
+        // 今日列建立前，先把歷史最後一列之後、今日以前（含今日）的交易套用到股數，
+        // 使重演股數與目前實際股數一致。
+        seriesState.forEach(series => applyTransactionsUpTo(series, todayStr));
         let currentStockValue = 0;
         // 今日列沿用與歷史列相同的股票範圍（只有 historyData 的持股）。
         // 舊寫法改用全部持股，會把無歷史資料持股的整筆市值灌進今日漲跌，

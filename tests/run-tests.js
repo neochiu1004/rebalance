@@ -181,6 +181,37 @@ test('annualPnl 年度損益跨年歸零重算', () => {
     approx(byDate['2026-01-02'].dailyPnl, -3000, 1, '2026 首日每日盈虧');
     approx(byDate['2026-01-02'].annualPnl, -3000, 1, '跨年後年度損益應歸零重算，不是 2000');
 });
+test('週日買進在下一個交易日列生效（股數與現金都套用）', () => {
+    // 2026-11-15 是週日（非交易日）：舊寫法以日期精確對照，這筆底倉買進永遠不會被重演套用。
+    run(`state.cash = 90000; state.cashFlows = []; state.stocks = [{ symbol:'2330', name:'台積電', shares:1000, price:13, costPrice:10, paidCost:10000, realizedPnl:0, historyData:[{d:'2026-11-13',c:10},{d:'2026-11-16',c:11},{d:'2026-11-17',c:12}], transactions:[{ id:'base-sun', type:'buy', price:10, shares:1000, fee:0, tax:0, netAmount:10000, date:'2026-11-15' }] }];`);
+    const rows = run(`calculateDailyPortfolioHistory()`);
+    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
+    approx(byDate['2026-11-13'].stockValue, 0, 1, '週五列尚未套用週日買進');
+    approx(byDate['2026-11-13'].cashValue, 100000, 1, '週五列現金尚未扣款');
+    approx(byDate['2026-11-16'].stockValue, 11000, 1, '週一列股數已套用（1000 股 × 收盤 11）');
+    approx(byDate['2026-11-16'].cashValue, 90000, 1, '週一列現金已扣買進金額');
+    approx(byDate['2026-11-17'].stockValue, 12000, 1, '週二列沿用完整股數');
+});
+test('今日附加列總資產 = 現金 + 完整目前股數 × 即時價', () => {
+    run(`state.cash = 50000; state.cashFlows = []; state.stocks = [
+        { symbol:'00631L', name:'元大台灣50正2', shares:100, price:50, costPrice:48, paidCost:4800, realizedPnl:0, historyData:[{d:'2026-11-19',c:48},{d:'2026-11-20',c:49}], transactions:[{ id:'a-base', type:'buy', price:48, shares:100, fee:0, tax:0, netAmount:4800, date:'2026-11-15' }] },
+        { symbol:'00685L', name:'群益臺灣加權正2', shares:200, price:20, costPrice:19, paidCost:3800, realizedPnl:0, historyData:[{d:'2026-11-19',c:19},{d:'2026-11-20',c:19.5}], transactions:[{ id:'b-buy', type:'buy', price:19, shares:200, fee:0, tax:0, netAmount:3800, date:'2026-11-16' }] }
+    ];`);
+    const rows = run(`calculateDailyPortfolioHistory()`);
+    const last = rows[rows.length - 1];
+    assert(last.date > '2026-11-20', '最後一列應是今日附加列，實際 ' + last.date);
+    approx(last.stockValue, 100 * 50 + 200 * 20, 1, '今日列股票市值用完整股數');
+    approx(last.cashValue, 50000, 1, '今日列現金');
+    approx(last.totalValue, 50000 + 100 * 50 + 200 * 20, 1, '今日列總資產');
+});
+test('交易日期恰為交易日時仍在當日列生效（回歸保護）', () => {
+    run(`state.cash = 89000; state.cashFlows = []; state.stocks = [{ symbol:'2330', name:'台積電', shares:1000, price:11, costPrice:11, paidCost:11000, realizedPnl:0, historyData:[{d:'2026-11-13',c:10},{d:'2026-11-16',c:11}], transactions:[{ id:'mon-buy', type:'buy', price:11, shares:1000, fee:0, tax:0, netAmount:11000, date:'2026-11-16' }] }];`);
+    const rows = run(`calculateDailyPortfolioHistory()`);
+    const byDate = Object.fromEntries(rows.map(r => [r.date, r]));
+    approx(byDate['2026-11-13'].stockValue, 0, 1, '買進前一列股數為 0');
+    approx(byDate['2026-11-16'].stockValue, 11000, 1, '當日列即套用股數');
+    approx(byDate['2026-11-16'].cashValue, 89000, 1, '當日列即扣現金');
+});
 
 // ---------- 新增股票自動連結 / 追蹤帶入買入清單 ----------
 test('getCachedStockInfoBySymbol 自追蹤清單帶入名稱與現價', () => {
