@@ -968,6 +968,28 @@ function renderTrendChart(stock) {
     });
 }
 
+// 歷史 K 線增量合併：以日期為鍵，舊資料先放、新抓資料覆蓋同日，
+// 回傳依日期升序並套用股票分割校正的陣列（與批次抓取原本的合併行為一致）。
+function mergeHistoryRows(existingRows, fetchedRows) {
+    const historyMap = new Map();
+    if (Array.isArray(existingRows)) {
+        existingRows.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
+    }
+    if (Array.isArray(fetchedRows)) {
+        fetchedRows.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
+    }
+    return adjustForStockSplits(Array.from(historyMap.values()).sort((a, b) => a.d.localeCompare(b.d)));
+}
+
+// 批次歷史抓取的目標清單：持股 + 追蹤股。
+// 同一代號在兩份清單中是各自獨立的物件，兩邊的 historyData 都要更新，不可去重跳過。
+function collectHistoryFetchTargets(stateObj) {
+    const targets = [];
+    if (stateObj && Array.isArray(stateObj.stocks)) targets.push(...stateObj.stocks);
+    if (stateObj && Array.isArray(stateObj.watchStocks)) targets.push(...stateObj.watchStocks);
+    return targets;
+}
+
 // ==========================================
 // 一鍵批次抓取所有持股近 1 年高低點與歷史走勢
 // ==========================================
@@ -977,8 +999,9 @@ async function fetchFinmindHighLow(options = {}) {
         if (typeof showToast === 'function') showToast('請先至設定頁輸入 FinMind Token');
         return;
     }
-    if (state.stocks.length === 0) {
-        if (typeof showToast === 'function') showToast('目前無持股資料');
+    const fetchTargets = collectHistoryFetchTargets(state);
+    if (fetchTargets.length === 0) {
+        if (typeof showToast === 'function') showToast('目前無持股或追蹤資料');
         return;
     }
 
@@ -1001,8 +1024,8 @@ async function fetchFinmindHighLow(options = {}) {
     const todayStr = localDateStr(today);
 
     try {
-        for (let i = 0; i < state.stocks.length; i++) {
-            const stock = state.stocks[i];
+        for (let i = 0; i < fetchTargets.length; i++) {
+            const stock = fetchTargets[i];
             if (!stock.symbol) continue;
 
             // 今日已抓過的股票直接跳過：避免每次開啟都重抓並重複跳出更新提示。
@@ -1045,14 +1068,8 @@ async function fetchFinmindHighLow(options = {}) {
 
                 if (newFetchedHistory.length === 0) continue;
 
-                // 2. 增量合併舊資料與新資料
-                const historyMap = new Map();
-                if (Array.isArray(stock.historyData)) {
-                    stock.historyData.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
-                }
-                newFetchedHistory.forEach(item => { if (item && item.d) historyMap.set(item.d, item); });
-
-                const mergedHistory = adjustForStockSplits(Array.from(historyMap.values()).sort((a, b) => a.d.localeCompare(b.d)));
+                // 2. 增量合併舊資料與新資料（持股與追蹤共用同一份合併邏輯）
+                const mergedHistory = mergeHistoryRows(stock.historyData, newFetchedHistory);
 
                 // 3. 強制計算並寫入 highPrice / lowPrice
                 let maxItem = mergedHistory[0];
@@ -1080,6 +1097,7 @@ async function fetchFinmindHighLow(options = {}) {
         if (updatedCount > 0) {
             saveState();
             renderWaterLevel();
+            if (typeof renderWatchStocks === 'function') renderWatchStocks();
             if (typeof updateAllData === 'function') updateAllData();
             // 日期改用實際抓到的最後一筆歷史資料日期，不再寫死 09-30；
             // 自動更新（開啟頁面時）不跳提示，手動更新才顯示。

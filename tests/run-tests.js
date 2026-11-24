@@ -734,5 +734,59 @@ test('buildTaiexRecentCandles 過濾無效列（規則與 computeTaiexHighs 相�
     assert(run(`buildTaiexRecentCandles(null, null, '2026-01-10')`).length === 0, '非陣列回空陣列');
 });
 
+// ---------- waterlevel: 歷史合併與批次抓取目標 ----------
+test('mergeHistoryRows 補上缺漏日期', () => {
+    const existing = [
+        { d: '2026-01-05', o: 10, h: 11, l: 9, c: 10, v: 100 },
+        { d: '2026-01-07', o: 12, h: 13, l: 11, c: 12, v: 100 }
+    ];
+    const fetched = [
+        { d: '2026-01-06', o: 11, h: 12, l: 10, c: 11, v: 100 },
+        { d: '2026-01-08', o: 13, h: 14, l: 12, c: 13, v: 100 }
+    ];
+    const merged = run(`mergeHistoryRows(${JSON.stringify(existing)}, ${JSON.stringify(fetched)})`);
+    assert(merged.length === 4 && merged.map(r => r.d).join(',') === '2026-01-05,2026-01-06,2026-01-07,2026-01-08', '缺日已補齊且升序: ' + merged.map(r => r.d).join(','));
+});
+test('mergeHistoryRows 新抓資料覆蓋同日舊列', () => {
+    const existing = [{ d: '2026-01-05', o: 10, h: 11, l: 9, c: 10, v: 100 }];
+    const fetched = [{ d: '2026-01-05', o: 20, h: 22, l: 19, c: 21, v: 200 }];
+    const merged = run(`mergeHistoryRows(${JSON.stringify(existing)}, ${JSON.stringify(fetched)})`);
+    assert(merged.length === 1 && merged[0].c === 21 && merged[0].v === 200, '同日以新資料為準');
+});
+test('mergeHistoryRows 排序且無重複日期', () => {
+    const existing = [
+        { d: '2026-01-08', o: 13, h: 14, l: 12, c: 13, v: 1 },
+        { d: '2026-01-05', o: 10, h: 11, l: 9, c: 10, v: 1 }
+    ];
+    const fetched = [
+        { d: '2026-01-08', o: 13, h: 14, l: 12, c: 13, v: 1 },
+        { d: '2026-01-06', o: 11, h: 12, l: 10, c: 11, v: 1 }
+    ];
+    const merged = run(`mergeHistoryRows(${JSON.stringify(existing)}, ${JSON.stringify(fetched)})`);
+    const dates = merged.map(r => r.d);
+    assert(dates.join(',') === '2026-01-05,2026-01-06,2026-01-08', '升序去重: ' + dates.join(','));
+    assert(new Set(dates).size === dates.length, '無重複日期');
+});
+test('mergeHistoryRows 空舊資料 → 回傳新資料（升序）', () => {
+    const fetched = [
+        { d: '2026-01-07', o: 12, h: 13, l: 11, c: 12, v: 1 },
+        { d: '2026-01-05', o: 10, h: 11, l: 9, c: 10, v: 1 }
+    ];
+    const merged = run(`mergeHistoryRows([], ${JSON.stringify(fetched)})`);
+    assert(merged.length === 2 && merged[0].d === '2026-01-05' && merged[1].d === '2026-01-07', '空舊資料直接回新資料升序');
+    assert(run(`mergeHistoryRows(null, ${JSON.stringify(fetched)})`).length === 2, '舊資料非陣列亦可');
+});
+test('collectHistoryFetchTargets 持股＋追蹤都入列，同代號兩邊各一份', () => {
+    const fakeState = {
+        stocks: [{ symbol: '00631L' }, { symbol: '00685L' }],
+        watchStocks: [{ symbol: '0050' }, { symbol: '00631L' }]
+    };
+    const targets = run(`collectHistoryFetchTargets(${JSON.stringify(fakeState)})`);
+    assert(targets.length === 4, '總數 = 持股 2 + 追蹤 2: ' + targets.length);
+    assert(targets.filter(t => t.symbol === '00631L').length === 2, '00631L 在持股與追蹤各出現一次，不去重');
+    assert(run(`collectHistoryFetchTargets({ stocks: [], watchStocks: [{ symbol: '2330' }] })`).length === 1, '無持股時追蹤仍入列');
+    assert(run(`collectHistoryFetchTargets({})`).length === 0, '空 state 回空陣列');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

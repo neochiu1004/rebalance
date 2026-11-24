@@ -1177,7 +1177,7 @@
             setupEventListeners();
             if (typeof bindEditModalEvents === 'function') bindEditModalEvents();
             if (state.apiKey && state.stocks.length > 0) fetchLatestPrices().catch(() => {});
-            if (state.finmindToken && state.stocks.length > 0 && typeof fetchFinmindHighLow === 'function') fetchFinmindHighLow({ auto: true });
+            if (state.finmindToken && (state.stocks.length > 0 || (state.watchStocks || []).length > 0) && typeof fetchFinmindHighLow === 'function') fetchFinmindHighLow({ auto: true });
             if (typeof renderWatchStocks === 'function') renderWatchStocks();
             if (typeof fetchWatchStockPrices === 'function') fetchWatchStockPrices();
             if (typeof updateAllData === 'function') updateAllData();
